@@ -1,0 +1,346 @@
+:root {
+  font-family: Inter, 'Pretendard', 'Segoe UI', sans-serif;
+  color: #eef3f6;
+  background: #0c0f14;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background: radial-gradient(circle at 85% 0%, #1a2630 0, transparent 36%), #0c0f14;
+}
+button,
+select,
+input {
+  font: inherit;
+}
+button {
+  cursor: pointer;
+}
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.shell {
+  width: min(100%, 680px);
+  margin: 0 auto;
+  padding: 30px 30px 22px;
+}
+.hero {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  margin-bottom: 24px;
+}
+.brand-mark {
+  width: 50px;
+  height: 50px;
+  border-radius: 14px;
+  background: #171d25;
+  display: grid;
+  place-items: center;
+  border: 1px solid #28333f;
+  box-shadow: 0 10px 28px #0007;
+}
+.brand-mark span {
+  width: 25px;
+  height: 17px;
+  border: 5px solid #42e7c4;
+  border-left-color: transparent;
+  border-radius: 50%;
+  transform: rotate(-14deg);
+}
+.eyebrow,
+.section-label {
+  margin: 0 0 5px;
+  color: #61dbc2;
+  letter-spacing: 0.12em;
+  font-weight: 750;
+  font-size: 11px;
+}
+h1 {
+  margin: 0;
+  font-size: 27px;
+  letter-spacing: -0.04em;
+}
+.subtitle {
+  margin: 3px 0 0;
+  color: #81909d;
+  font-size: 13px;
+}
+
+.status-card,
+.current-card,
+.panel {
+  border: 1px solid #222a33;
+  background: linear-gradient(145deg, #141920, #10141a);
+  border-radius: 18px;
+  box-shadow: 0 18px 45px #0003;
+}
+.status-card {
+  padding: 17px 19px;
+  margin-bottom: 14px;
+}
+.status-line {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.status-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #86939d;
+  box-shadow: 0 0 0 5px #86939d15;
+}
+.status-connected .status-dot {
+  background: #42e7c4;
+  box-shadow:
+    0 0 0 5px #42e7c418,
+    0 0 16px #42e7c480;
+}
+.status-wrong_mode .status-dot,
+.status-api_changed .status-dot,
+.status-communication_error .status-dot {
+  background: #ffb25b;
+}
+.status-card > p {
+  margin: 7px 0 13px 18px;
+  color: #8c98a3;
+  font-size: 13px;
+}
+.status-meta {
+  display: flex;
+  gap: 24px;
+  border-top: 1px solid #232b33;
+  padding-top: 12px;
+  color: #65717c;
+  font-size: 11px;
+}
+.status-meta b {
+  color: #b7c1c9;
+  margin-left: 5px;
+  font-weight: 600;
+}
+.icon-button {
+  margin-left: auto;
+  width: 29px;
+  height: 29px;
+  border-radius: 9px;
+  border: 1px solid #2a353f;
+  color: #a8b3bc;
+  background: #171d24;
+}
+
+.current-card {
+  padding: 21px;
+  margin-bottom: 14px;
+  overflow: hidden;
+  position: relative;
+}
+.current-card::after {
+  content: '';
+  position: absolute;
+  width: 180px;
+  height: 180px;
+  border-radius: 50%;
+  background: #42e7c410;
+  filter: blur(30px);
+  top: -95px;
+  right: -40px;
+  pointer-events: none;
+}
+.device-now {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  margin: 16px 0 20px;
+}
+.device-icon {
+  width: 45px;
+  height: 45px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  background: #1c292a;
+  color: #42e7c4;
+  font-size: 26px;
+}
+.device-now h2 {
+  margin: 0;
+  font-size: 16px;
+  max-width: 450px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.device-now p {
+  margin: 4px 0 0;
+  color: #70808b;
+  font-size: 12px;
+}
+.switch-button {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 50px;
+  border: 0;
+  border-radius: 13px;
+  background: linear-gradient(100deg, #47e3c3, #63d6b8);
+  color: #07110f;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 13px;
+  box-shadow: 0 10px 25px #42e7c424;
+}
+.switch-button kbd {
+  border: 1px solid #0a302846;
+  border-radius: 6px;
+  padding: 1px 6px 3px;
+  background: #ffffff36;
+}
+.hint {
+  text-align: center;
+  font-size: 11px;
+  color: #8c98a3;
+  margin: 10px 0 0;
+}
+
+.panel {
+  padding: 21px;
+  margin-bottom: 14px;
+}
+.panel-heading h3 {
+  margin: 0 0 18px;
+  font-size: 17px;
+}
+label {
+  display: block;
+  margin-bottom: 14px;
+  color: #aab4bc;
+  font-size: 12px;
+  font-weight: 650;
+}
+select,
+input[type='text'],
+input:not([type]) {
+  width: 100%;
+  margin-top: 7px;
+  height: 44px;
+  border: 1px solid #29333c;
+  border-radius: 11px;
+  background: #0c1116;
+  color: #dbe2e7;
+  padding: 0 12px;
+  outline: none;
+}
+select:focus,
+input:focus {
+  border-color: #42e7c4;
+  box-shadow: 0 0 0 3px #42e7c414;
+}
+label small {
+  display: block;
+  margin: 6px 0 0;
+  color: #66747e;
+  font-weight: 400;
+}
+.quick-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 9px;
+}
+.quick-actions button,
+.save-button {
+  height: 40px;
+  border-radius: 10px;
+  border: 1px solid #29343d;
+  color: #aab5bd;
+  background: #161c23;
+  font-weight: 650;
+  font-size: 12px;
+}
+.toggle-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 18px 0;
+}
+.toggle-row small {
+  margin-top: 4px;
+}
+input[type='checkbox'] {
+  appearance: none;
+  width: 42px;
+  height: 24px;
+  border-radius: 20px;
+  background: #29333c;
+  position: relative;
+  transition: 0.2s;
+}
+input[type='checkbox']::after {
+  content: '';
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  top: 3px;
+  left: 3px;
+  border-radius: 50%;
+  background: #89949d;
+  transition: 0.2s;
+}
+input[type='checkbox']:checked {
+  background: #42e7c4;
+}
+input[type='checkbox']:checked::after {
+  left: 21px;
+  background: #0b1714;
+}
+.save-button {
+  width: 100%;
+  border-color: #33433f;
+  color: #b8f3e6;
+}
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 32px;
+  transform: translateX(-50%);
+  max-width: calc(100% - 44px);
+  padding: 12px 18px;
+  border-radius: 11px;
+  background: #eafbf6;
+  color: #14211e;
+  font-size: 12px;
+  font-weight: 650;
+  box-shadow: 0 12px 38px #0008;
+  z-index: 10;
+}
+footer {
+  color: #52606a;
+  text-align: center;
+  font-size: 11px;
+  padding-top: 4px;
+}
+
+@media (max-width: 560px) {
+  .shell {
+    padding: 22px 16px 18px;
+  }
+  .status-meta {
+    flex-direction: column;
+    gap: 6px;
+  }
+  .device-now h2 {
+    max-width: 300px;
+  }
+}

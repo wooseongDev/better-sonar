@@ -1,0 +1,40 @@
+{
+  "name": "better-sonar",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "prepare": "lefthook install",
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "oxlint",
+    "lint:fix": "oxlint --fix",
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check .",
+    "check:frontend": "pnpm lint && pnpm format:check",
+    "check:rust": "cargo fmt --all --check && cargo clippy --workspace --all-targets --all-features -- -D warnings",
+    "check:quality": "pnpm check:frontend && pnpm check:rust",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.8.0",
+    "@tauri-apps/plugin-autostart": "^2.5.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.8.4",
+    "@types/react": "^19.1.12",
+    "@types/react-dom": "^19.1.9",
+    "@vitejs/plugin-react": "^5.0.2",
+    "lefthook": "2.1.10",
+    "oxfmt": "^0.57.0",
+    "oxlint": "^1.73.0",
+    "typescript": "~5.9.2",
+    "vite": "^7.1.4"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "packageManager": "pnpm@11.9.0"
+}

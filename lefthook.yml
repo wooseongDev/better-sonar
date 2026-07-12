@@ -1,0 +1,27 @@
+pre-commit:
+  parallel: true
+  commands:
+    oxlint:
+      glob: '*.{js,jsx,ts,tsx,mjs,cjs,mts,cts}'
+      run: pnpm exec oxlint {staged_files}
+    oxfmt:
+      glob: '*.{js,jsx,ts,tsx,mjs,cjs,mts,cts,json,jsonc,json5,yaml,yml,md,mdx,css,scss,less,html,vue,graphql,gql}'
+      run: pnpm exec oxfmt --check {staged_files}
+    rustfmt:
+      glob:
+        - '*.rs'
+        - '**/*.rs'
+        - 'Cargo.toml'
+        - '**/Cargo.toml'
+        - 'Cargo.lock'
+        - 'rustfmt.toml'
+      run: cargo fmt --all --check
+    clippy:
+      glob:
+        - '*.rs'
+        - '**/*.rs'
+        - 'Cargo.toml'
+        - '**/Cargo.toml'
+        - 'Cargo.lock'
+        - 'rustfmt.toml'
+      run: cargo clippy --workspace --all-targets --all-features -- -D warnings

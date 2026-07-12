@@ -1,0 +1,6 @@
+[workspace]
+members = ["sonar-probe", "src-tauri"]
+resolver = "2"
+
+[workspace.lints.clippy]
+all = "warn"

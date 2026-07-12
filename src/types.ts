@@ -1,0 +1,34 @@
+export type ConnectionStatus =
+  | 'connected'
+  | 'gg_not_running'
+  | 'sonar_disabled'
+  | 'sonar_starting'
+  | 'wrong_mode'
+  | 'api_changed'
+  | 'communication_error'
+
+export interface AudioDevice {
+  id: string
+  name: string
+  state: string
+  channels: number
+}
+
+export interface AppSettings {
+  headsetDeviceId: string | null
+  speakerDeviceId: string | null
+  shortcut: string
+  autostart: boolean
+}
+
+export interface AppSnapshot {
+  status: ConnectionStatus
+  message: string
+  mode: string | null
+  devices: AudioDevice[]
+  personalDeviceId: string | null
+  personalDeviceName: string | null
+  streamDeviceId: string | null
+  settings: AppSettings
+  lastUpdatedAt: number
+}
