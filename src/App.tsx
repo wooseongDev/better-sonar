@@ -26,6 +26,7 @@ const emptySnapshot: AppSnapshot = {
     speakerDeviceId: null,
     shortcut: 'Ctrl+Alt+F9',
     autostart: false,
+    mediaKeysEnabled: true,
   },
   lastUpdatedAt: Date.now(),
 }
@@ -209,6 +210,17 @@ function App() {
             spellCheck={false}
           />
           <small>예: Ctrl+Alt+F9, Super+Shift+S</small>
+        </label>
+        <label className="toggle-row">
+          <span>
+            <b>Fn 미디어 키 액션</b>
+            <small>Fn + F10/F11/F12로 음소거와 Personal 음량을 제어합니다.</small>
+          </span>
+          <input
+            type="checkbox"
+            checked={draft.mediaKeysEnabled}
+            onChange={(event) => setDraft({ ...draft, mediaKeysEnabled: event.target.checked })}
+          />
         </label>
         <label className="toggle-row">
           <span>

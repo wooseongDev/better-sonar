@@ -28,8 +28,11 @@ Better Sonar는 GG의 로컬 설정에서 GG API 주소를 확인한 뒤 `/subAp
 | 장치 목록                 | `GET /audioDevices`                                                  | 물리 출력은 `dataFlow=render`, `role=none`, `isVad=false`        |
 | Personal/Stream 출력 조회 | `GET /streamRedirections`                                            | Personal=`monitoring`, Stream=`streaming`                        |
 | Personal 출력 변경        | `PUT /streamRedirections/monitoring/deviceId/{URL-encoded deviceId}` | 응답 후 상태 재조회                                              |
+| Streamer 음량 조회        | `GET /volumeSettings/streamer`                                       | `masters.stream.monitoring`이 Master - Personal                  |
 
 Better Sonar는 `streaming` 경로에 변경 요청을 보내지 않습니다. Personal Mix 변경 전후의 Stream Mix 상태를 비교하고 달라진 경우 전환 실패로 처리합니다.
+
+미디어 키는 위 HTTP 쓰기 API를 직접 호출하지 않습니다. Sonar 프로세스가 GG에서 받은 `GG_WS_ENDPOINT`와 `GG_API_AUTH_TOKEN`을 같은 사용자 권한으로 읽어 GG 이벤트 소켓에 인증한 뒤, Sonar가 자체 단축키에 사용하는 `EVENT_KEYBOARD_SHORTCUT`을 전송합니다. Master - Personal 동작 ID는 증가 `22`, 감소 `23`, 음소거 토글 `24`입니다. 이 경로를 사용해야 Sonar가 값을 변경한 뒤 `SONAR_EVENT_VOLUME_DATA`를 발행하므로 GG 믹서 UI도 동기화됩니다. 적용 결과는 `GET /volumeSettings/streamer`로 다시 확인합니다.
 
 ## 검증한 동작
 
@@ -44,6 +47,8 @@ Better Sonar는 `streaming` 경로에 변경 요청을 보내지 않습니다. P
 - Stream Mix 변경 감지
 - GG 재시작 후 Sonar API 재탐색
 - 변경한 Personal Mix의 원래 장치 복원
+- Master - Personal 음량을 5% 단위로 증감하고 원래 값으로 복원
+- Master - Personal 음소거 전환과 원래 상태 복원
 
 검증 과정에서는 GG 파일이나 사용자 Sonar 설정 파일을 직접 수정하지 않습니다.
 
@@ -54,4 +59,5 @@ Better Sonar는 `streaming` 경로에 변경 요청을 보내지 않습니다. P
 - 모든 요청에 제한 시간을 적용하고 실패하면 Sonar API를 다시 탐색합니다.
 - 장치는 고유 `deviceId`로 식별하며 장치가 없거나 비활성 상태이면 변경을 거부합니다.
 - 변경 요청 후 상태를 다시 조회해 실제 적용 여부를 확인합니다.
+- Master - Personal 단축키 이벤트만 보내며 `masters.stream.streaming`에는 쓰기 요청을 보내지 않습니다.
 - GG 업데이트로 API가 변경되면 Better Sonar도 업데이트가 필요할 수 있습니다.

@@ -117,6 +117,18 @@ impl AppRuntime {
         *self.settings.write().await = value;
         Ok(self.refresh().await)
     }
+
+    #[cfg(windows)]
+    pub async fn control_personal_volume(
+        &self,
+        action: crate::sonar_client::PersonalVolumeAction,
+    ) -> Result<(), String> {
+        let _guard = self.operation.lock().await;
+        self.client
+            .control_personal_volume(action)
+            .await
+            .map_err(|error| error.to_string())
+    }
 }
 
 fn snapshot_from_error(error: SonarError, settings: AppSettings) -> AppSnapshot {

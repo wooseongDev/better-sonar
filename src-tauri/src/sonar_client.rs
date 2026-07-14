@@ -7,6 +7,19 @@ use thiserror::Error;
 
 use crate::{discovery::discover_sonar, models::AudioDevice};
 
+#[cfg(any(windows, test))]
+const MASTER_VOLUME_STEP: f32 = 0.05;
+#[cfg(any(windows, test))]
+const VOLUME_EPSILON: f32 = 0.001;
+
+#[cfg(any(windows, test))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub(crate) enum PersonalVolumeAction {
+    ToggleMute,
+    StepDown,
+    StepUp,
+}
+
 #[derive(Debug, Error)]
 pub enum SonarError {
     #[error("SteelSeries GG가 실행 중이 아닙니다")]
@@ -49,6 +62,31 @@ struct RawRedirection {
     rest: serde_json::Map<String, Value>,
 }
 
+#[cfg(any(windows, test))]
+#[derive(Clone, Copy, Debug, Deserialize)]
+struct RawVolumeState {
+    volume: f32,
+    muted: bool,
+}
+
+#[cfg(any(windows, test))]
+#[derive(Debug, Deserialize)]
+struct RawStreamMasters {
+    stream: RawStreamMasterTargets,
+}
+
+#[cfg(any(windows, test))]
+#[derive(Debug, Deserialize)]
+struct RawStreamMasterTargets {
+    monitoring: RawVolumeState,
+}
+
+#[cfg(any(windows, test))]
+#[derive(Debug, Deserialize)]
+struct RawStreamerVolumeSettings {
+    masters: RawStreamMasters,
+}
+
 #[derive(Clone, Debug)]
 pub struct SonarState {
     pub mode: String,
@@ -59,6 +97,8 @@ pub struct SonarState {
 
 pub struct SonarClient {
     http: Client,
+    #[cfg(all(windows, not(test)))]
+    gg_shortcuts: crate::gg_shortcuts::GgShortcutClient,
     #[cfg(test)]
     fixed_base: Option<String>,
 }
@@ -67,6 +107,8 @@ impl SonarClient {
     pub fn new() -> Result<Self, SonarError> {
         Ok(Self {
             http: Client::builder().timeout(Duration::from_secs(3)).build()?,
+            #[cfg(all(windows, not(test)))]
+            gg_shortcuts: crate::gg_shortcuts::GgShortcutClient::new(),
             #[cfg(test)]
             fixed_base: None,
         })
@@ -87,12 +129,21 @@ impl SonarClient {
                 .timeout(Duration::from_secs(3))
                 .build()
                 .expect("테스트 HTTP 클라이언트를 생성해야 합니다"),
+            #[cfg(all(windows, not(test)))]
+            gg_shortcuts: crate::gg_shortcuts::GgShortcutClient::new(),
             fixed_base: Some(base),
         }
     }
 
     async fn get_json<T: serde::de::DeserializeOwned>(&self, url: String) -> Result<T, SonarError> {
-        let response = self.http.get(url).send().await?.error_for_status()?;
+        let response = self.http.get(url).send().await?;
+        if matches!(response.status().as_u16(), 404 | 405) {
+            return Err(SonarError::ApiChanged(format!(
+                "Sonar가 필요한 조회 경로를 지원하지 않습니다 ({})",
+                response.status()
+            )));
+        }
+        let response = response.error_for_status()?;
         response
             .json()
             .await
@@ -101,6 +152,37 @@ impl SonarClient {
 
     async fn redirections(&self, base: &str) -> Result<Vec<RawRedirection>, SonarError> {
         self.get_json(format!("{base}/streamRedirections")).await
+    }
+
+    #[cfg(any(windows, test))]
+    async fn streamer_volume_settings(&self, base: &str) -> Result<RawStreamerVolumeSettings, SonarError> {
+        self.get_json(format!("{base}/volumeSettings/streamer")).await
+    }
+
+    #[cfg(any(windows, test))]
+    async fn ensure_streamer_mode(&self, base: &str) -> Result<(), SonarError> {
+        let mode: String = self.get_json(format!("{base}/mode")).await?;
+        if mode == "stream" {
+            Ok(())
+        } else {
+            Err(SonarError::WrongMode)
+        }
+    }
+
+    #[cfg(test)]
+    async fn put_internal_api(&self, url: String) -> Result<(), SonarError> {
+        let response = self.http.put(&url).send().await?;
+        if response.status().is_success() {
+            return Ok(());
+        }
+        if matches!(response.status().as_u16(), 404 | 405) {
+            return Err(SonarError::ApiChanged(format!(
+                "Sonar가 Master - Personal 변경 경로를 지원하지 않습니다 ({})",
+                response.status()
+            )));
+        }
+        response.error_for_status()?;
+        Ok(())
     }
 
     fn find_redirection<'a>(items: &'a [RawRedirection], id: &str) -> Result<&'a RawRedirection, SonarError> {
@@ -183,6 +265,67 @@ impl SonarClient {
         }
         Ok(())
     }
+
+    #[cfg(any(windows, test))]
+    pub async fn control_personal_volume(&self, action: PersonalVolumeAction) -> Result<(), SonarError> {
+        let base = self.base().await?;
+        self.ensure_streamer_mode(&base).await?;
+        let before = self.streamer_volume_settings(&base).await?.masters.stream.monitoring;
+        if !before.volume.is_finite() || !(0.0..=1.0).contains(&before.volume) {
+            return Err(SonarError::ApiChanged(
+                "Master - Personal 음량 값이 예상 범위를 벗어났습니다".into(),
+            ));
+        }
+
+        let (path, expected) = match action {
+            PersonalVolumeAction::ToggleMute => (
+                format!(
+                    "{base}/volumeSettings/streamer/monitoring/master/isMuted/{}",
+                    !before.muted
+                ),
+                RawVolumeState {
+                    volume: before.volume,
+                    muted: !before.muted,
+                },
+            ),
+            PersonalVolumeAction::StepDown | PersonalVolumeAction::StepUp => {
+                let delta = if action == PersonalVolumeAction::StepUp {
+                    MASTER_VOLUME_STEP
+                } else {
+                    -MASTER_VOLUME_STEP
+                };
+                let next = (before.volume + delta).clamp(0.0, 1.0);
+                (
+                    format!("{base}/volumeSettings/streamer/monitoring/master/volume/{next}"),
+                    RawVolumeState {
+                        volume: next,
+                        muted: before.muted,
+                    },
+                )
+            }
+        };
+
+        #[cfg(all(windows, not(test)))]
+        self.gg_shortcuts.trigger(action).await?;
+        #[cfg(any(not(windows), test))]
+        self.put_internal_api(path).await?;
+        #[cfg(all(windows, not(test)))]
+        let _ = path;
+        tokio::time::sleep(Duration::from_millis(80)).await;
+        let after = self.streamer_volume_settings(&base).await?.masters.stream.monitoring;
+        let applied = match action {
+            PersonalVolumeAction::ToggleMute => after.muted == expected.muted,
+            PersonalVolumeAction::StepDown | PersonalVolumeAction::StepUp => {
+                (after.volume - expected.volume).abs() <= VOLUME_EPSILON
+            }
+        };
+        if !applied {
+            return Err(SonarError::Verification(
+                "Sonar Master - Personal 값이 요청대로 변경되지 않았습니다".into(),
+            ));
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -198,7 +341,7 @@ mod tests {
     use serde_json::{Value, json};
     use tokio::{net::TcpListener, sync::Mutex};
 
-    use super::{SonarClient, SonarError};
+    use super::{PersonalVolumeAction, SonarClient, SonarError};
 
     const HEADSET_ID: &str = "{0.0.0.00000000}.{headset}";
     const SPEAKER_ID: &str = "{0.0.0.00000000}.{speaker}";
@@ -216,6 +359,12 @@ mod tests {
         mutate_stream_on_put: bool,
         ignore_put: bool,
         put_count: usize,
+        personal_volume: f32,
+        personal_muted: bool,
+        streaming_volume: f32,
+        volume_put_count: usize,
+        ignore_volume_put: bool,
+        reject_volume_put: bool,
     }
 
     impl Default for MockInner {
@@ -227,6 +376,12 @@ mod tests {
                 mutate_stream_on_put: false,
                 ignore_put: false,
                 put_count: 0,
+                personal_volume: 0.6,
+                personal_muted: false,
+                streaming_volume: 0.8,
+                volume_put_count: 0,
+                ignore_volume_put: false,
+                reject_volume_put: false,
             }
         }
     }
@@ -319,6 +474,44 @@ mod tests {
         StatusCode::OK
     }
 
+    async fn volume_settings(State(state): State<MockState>) -> Json<Value> {
+        let inner = state.inner.lock().await;
+        Json(json!({
+            "masters": {
+                "stream": {
+                    "streaming": { "volume": inner.streaming_volume, "muted": false },
+                    "monitoring": { "volume": inner.personal_volume, "muted": inner.personal_muted }
+                },
+                "classic": { "volume": 1.0, "muted": false }
+            },
+            "devices": {}
+        }))
+    }
+
+    async fn set_master_volume(State(state): State<MockState>, Path(volume): Path<f32>) -> StatusCode {
+        let mut inner = state.inner.lock().await;
+        inner.volume_put_count += 1;
+        if inner.reject_volume_put {
+            return StatusCode::NOT_FOUND;
+        }
+        if !inner.ignore_volume_put {
+            inner.personal_volume = volume;
+        }
+        StatusCode::OK
+    }
+
+    async fn set_master_mute(State(state): State<MockState>, Path(muted): Path<bool>) -> StatusCode {
+        let mut inner = state.inner.lock().await;
+        inner.volume_put_count += 1;
+        if inner.reject_volume_put {
+            return StatusCode::NOT_FOUND;
+        }
+        if !inner.ignore_volume_put {
+            inner.personal_muted = muted;
+        }
+        StatusCode::OK
+    }
+
     async fn server(inner: MockInner) -> (SonarClient, MockState) {
         let state = MockState {
             inner: Arc::new(Mutex::new(inner)),
@@ -330,6 +523,15 @@ mod tests {
             .route(
                 "/streamRedirections/monitoring/deviceId/{*device_id}",
                 put(set_monitoring),
+            )
+            .route("/volumeSettings/streamer", get(volume_settings))
+            .route(
+                "/volumeSettings/streamer/monitoring/master/volume/{volume}",
+                put(set_master_volume),
+            )
+            .route(
+                "/volumeSettings/streamer/monitoring/master/isMuted/{muted}",
+                put(set_master_mute),
             )
             .with_state(state.clone());
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -412,5 +614,89 @@ mod tests {
         let error = client.set_personal_output(SPEAKER_ID).await.unwrap_err();
 
         assert!(matches!(error, SonarError::Verification(message) if message.contains("Stream Mix")));
+    }
+
+    #[tokio::test]
+    async fn personal_master_volume_uses_sonar_step_and_preserves_stream_master() {
+        let (client, state) = server(MockInner::default()).await;
+
+        client
+            .control_personal_volume(PersonalVolumeAction::StepUp)
+            .await
+            .unwrap();
+        client
+            .control_personal_volume(PersonalVolumeAction::StepDown)
+            .await
+            .unwrap();
+
+        let inner = state.inner.lock().await;
+        assert!((inner.personal_volume - 0.6).abs() < 0.001);
+        assert!((inner.streaming_volume - 0.8).abs() < f32::EPSILON);
+        assert_eq!(inner.volume_put_count, 2);
+    }
+
+    #[tokio::test]
+    async fn personal_master_mute_toggles_sonar_monitoring_master() {
+        let (client, state) = server(MockInner::default()).await;
+
+        client
+            .control_personal_volume(PersonalVolumeAction::ToggleMute)
+            .await
+            .unwrap();
+
+        let inner = state.inner.lock().await;
+        assert!(inner.personal_muted);
+        assert_eq!(inner.volume_put_count, 1);
+    }
+
+    #[tokio::test]
+    async fn personal_master_control_detects_when_sonar_ignores_the_request() {
+        let inner = MockInner {
+            ignore_volume_put: true,
+            ..MockInner::default()
+        };
+        let (client, state) = server(inner).await;
+
+        let error = client
+            .control_personal_volume(PersonalVolumeAction::StepUp)
+            .await
+            .unwrap_err();
+
+        assert!(matches!(error, SonarError::Verification(message) if message.contains("변경되지 않았습니다")));
+        assert_eq!(state.inner.lock().await.volume_put_count, 1);
+    }
+
+    #[tokio::test]
+    async fn personal_master_control_rejects_classic_mode_without_writing() {
+        let inner = MockInner {
+            mode: "classic".into(),
+            ..MockInner::default()
+        };
+        let (client, state) = server(inner).await;
+
+        let error = client
+            .control_personal_volume(PersonalVolumeAction::StepUp)
+            .await
+            .unwrap_err();
+
+        assert!(matches!(error, SonarError::WrongMode));
+        assert_eq!(state.inner.lock().await.volume_put_count, 0);
+    }
+
+    #[tokio::test]
+    async fn personal_master_control_reports_internal_api_changes() {
+        let inner = MockInner {
+            reject_volume_put: true,
+            ..MockInner::default()
+        };
+        let (client, state) = server(inner).await;
+
+        let error = client
+            .control_personal_volume(PersonalVolumeAction::StepUp)
+            .await
+            .unwrap_err();
+
+        assert!(matches!(error, SonarError::ApiChanged(message) if message.contains("변경 경로")));
+        assert_eq!(state.inner.lock().await.volume_put_count, 1);
     }
 }

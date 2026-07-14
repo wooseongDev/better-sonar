@@ -28,6 +28,12 @@ pub struct AppSettings {
     pub speaker_device_id: Option<String>,
     pub shortcut: String,
     pub autostart: bool,
+    #[serde(default = "default_media_keys_enabled")]
+    pub media_keys_enabled: bool,
+}
+
+const fn default_media_keys_enabled() -> bool {
+    true
 }
 
 impl Default for AppSettings {
@@ -37,6 +43,7 @@ impl Default for AppSettings {
             speaker_device_id: None,
             shortcut: "Ctrl+Alt+F9".into(),
             autostart: false,
+            media_keys_enabled: true,
         }
     }
 }
@@ -91,6 +98,7 @@ mod tests {
             speaker_device_id: Some("speaker".into()),
             shortcut: "Ctrl+Alt+F9".into(),
             autostart: false,
+            media_keys_enabled: true,
         };
 
         assert_eq!(
@@ -99,7 +107,8 @@ mod tests {
                 "headsetDeviceId": "headset",
                 "speakerDeviceId": "speaker",
                 "shortcut": "Ctrl+Alt+F9",
-                "autostart": false
+                "autostart": false,
+                "mediaKeysEnabled": true
             })
         );
         assert_eq!(

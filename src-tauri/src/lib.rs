@@ -1,5 +1,7 @@
 mod commands;
 mod discovery;
+#[cfg(all(windows, not(test)))]
+mod gg_shortcuts;
 mod models;
 mod settings;
 mod shortcuts;
@@ -28,14 +30,7 @@ pub fn run() {
         .plugin(tauri_plugin_autostart::Builder::new().arg(AUTOSTART_ARG).build())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(|app, _, event| {
-                    if event.state() == tauri_plugin_global_shortcut::ShortcutState::Pressed {
-                        let app = app.clone();
-                        tauri::async_runtime::spawn(async move {
-                            let _ = commands::toggle_and_publish(&app).await;
-                        });
-                    }
-                })
+                .with_handler(shortcuts::handle_event)
                 .build(),
         )
         .setup(|app| {
@@ -54,11 +49,19 @@ pub fn run() {
             }
             let runtime = AppRuntime::new(path, initial_settings.clone())?;
             app.manage(runtime.clone());
+            #[cfg(windows)]
+            app.manage(shortcuts::MediaKeyRepeatState::default());
             tray::build(&app_handle)?;
             if !has_autostart_arg(std::env::args_os()) {
                 tray::show_window(&app_handle);
             }
-            if let Err(error) = shortcuts::apply(&app_handle, &initial_settings.shortcut) {
+            if let Err(error) = shortcuts::register_user(&app_handle, &initial_settings.shortcut) {
+                let _ = app_handle.emit("sonar-error", error);
+            }
+            #[cfg(windows)]
+            if initial_settings.media_keys_enabled
+                && let Err(error) = shortcuts::register_media_keys(&app_handle)
+            {
                 let _ = app_handle.emit("sonar-error", error);
             }
 

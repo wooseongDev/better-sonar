@@ -64,10 +64,10 @@ pub async fn save_settings(
     settings: AppSettings,
 ) -> Result<AppSnapshot, String> {
     let old = runtime.snapshot().await.settings;
+    let new_shortcut = settings.shortcut.clone();
     if old.shortcut != settings.shortcut
-        && let Err(error) = shortcuts::apply(&app, &settings.shortcut)
+        && let Err(error) = shortcuts::replace_user(&app, &old.shortcut, &settings.shortcut)
     {
-        let _ = shortcuts::apply(&app, &old.shortcut);
         return Err(error);
     }
     if old.autostart != settings.autostart {
@@ -77,9 +77,21 @@ pub async fn save_settings(
             app.autolaunch().disable().map_err(|error| error.to_string())
         };
         if let Err(error) = autostart_result {
-            let _ = shortcuts::apply(&app, &old.shortcut);
+            let _ = shortcuts::replace_user(&app, &settings.shortcut, &old.shortcut);
             return Err(error);
         }
+    }
+    #[cfg(windows)]
+    if old.media_keys_enabled != settings.media_keys_enabled
+        && let Err(error) = shortcuts::replace_media_keys(&app, old.media_keys_enabled, settings.media_keys_enabled)
+    {
+        let _ = shortcuts::replace_user(&app, &settings.shortcut, &old.shortcut);
+        if old.autostart {
+            let _ = app.autolaunch().enable();
+        } else {
+            let _ = app.autolaunch().disable();
+        }
+        return Err(error);
     }
     match runtime.save_settings(settings).await {
         Ok(snapshot) => {
@@ -87,12 +99,14 @@ pub async fn save_settings(
             Ok(snapshot)
         }
         Err(error) => {
-            let _ = shortcuts::apply(&app, &old.shortcut);
+            let _ = shortcuts::replace_user(&app, &new_shortcut, &old.shortcut);
             if old.autostart {
                 let _ = app.autolaunch().enable();
             } else {
                 let _ = app.autolaunch().disable();
             }
+            #[cfg(windows)]
+            let _ = shortcuts::replace_media_keys(&app, !old.media_keys_enabled, old.media_keys_enabled);
             Err(error)
         }
     }

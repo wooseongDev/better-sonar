@@ -19,6 +19,7 @@ export interface AppSettings {
   speakerDeviceId: string | null
   shortcut: string
   autostart: boolean
+  mediaKeysEnabled: boolean
 }
 
 export interface AppSnapshot {

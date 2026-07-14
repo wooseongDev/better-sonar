@@ -44,6 +44,7 @@ mod tests {
             speaker_device_id: Some("speaker-id".into()),
             shortcut: "Ctrl+Shift+F10".into(),
             autostart: true,
+            media_keys_enabled: false,
         };
 
         save(&path, &expected).unwrap();
@@ -60,5 +61,23 @@ mod tests {
         let invalid = directory.path().join("invalid.json");
         std::fs::write(&invalid, b"not json").unwrap();
         assert_eq!(load(&invalid), AppSettings::default());
+    }
+
+    #[test]
+    fn legacy_settings_enable_media_keys_by_default() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("settings.json");
+        std::fs::write(
+            &path,
+            r#"{
+                "headsetDeviceId": null,
+                "speakerDeviceId": null,
+                "shortcut": "Ctrl+Alt+F9",
+                "autostart": false
+            }"#,
+        )
+        .unwrap();
+
+        assert!(load(&path).media_keys_enabled);
     }
 }
