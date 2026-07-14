@@ -89,7 +89,8 @@ jobs:
           New-Item -ItemType Directory -Force artifacts | Out-Null
           $lines = @($nsis[0], $msi[0]) | Sort-Object Name | ForEach-Object {
             $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash.ToLowerInvariant()
-            "$hash  $($_.Name)"
+            $uploadedName = $_.Name.Replace(' ', '.')
+            "$hash  $uploadedName"
           }
           [IO.File]::WriteAllLines(
             (Join-Path $PWD 'artifacts/SHA256SUMS.txt'),
