@@ -8,6 +8,7 @@ mod shortcuts;
 mod sonar_client;
 mod state;
 mod tray;
+mod updates;
 
 use std::{ffi::OsStr, sync::Arc, time::Duration};
 
@@ -24,6 +25,7 @@ fn has_autostart_arg(args: impl IntoIterator<Item = impl AsRef<OsStr>>) -> bool 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
             tray::show_window(app);
         }))
@@ -80,6 +82,8 @@ pub fn run() {
             commands::set_output,
             commands::toggle_output,
             commands::save_settings,
+            updates::check_for_update,
+            updates::install_update,
         ])
         .run(tauri::generate_context!())
         .expect("Better Sonar 실행 중 오류가 발생했습니다");

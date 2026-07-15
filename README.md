@@ -27,6 +27,8 @@ Windows가 `VK_VOLUME_MUTE`, `VK_VOLUME_DOWN`, `VK_VOLUME_UP`으로 전달하는
 
 창의 닫기 버튼은 앱을 종료하지 않고 숨깁니다. 완전히 종료하려면 트레이 메뉴의 **종료**를 사용하세요.
 
+v0.0.3부터 앱이 시작된 뒤 새 버전을 자동으로 확인합니다. 업데이트가 있으면 앱 설정 화면에서 내용을 확인하고 **다운로드 및 설치**를 선택할 수 있으며, 설치가 끝나면 앱이 재시작됩니다. v0.0.1과 v0.0.2에는 updater가 없으므로 v0.0.3은 GitHub Releases에서 한 번 수동 설치해야 합니다.
+
 ## 문제 해결
 
 - **GG가 실행되지 않음**: GG가 실행 중인지 확인합니다.
@@ -78,6 +80,8 @@ cargo run -p sonar-probe -- --switch-to "{Sonar device ID}"
 ```
 
 미디어 키의 구현 및 실제 Windows 검증 절차는 [Windows 미디어 키 검증](docs/WINDOWS_MEDIA_KEYS.md)을 참고하세요.
+
+GitHub Releases 자동 업데이트의 키 관리, 릴리스 및 실제 2버전 검증 절차는 [자동 업데이트 운영](docs/AUTO_UPDATE.md)을 참고하세요.
 
 ## 구조
 

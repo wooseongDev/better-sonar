@@ -1,7 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { getVersion } from '@tauri-apps/api/app'
 import { listen } from '@tauri-apps/api/event'
-import { getSnapshot, refresh, saveSettings, setOutput, toggleOutput } from './api'
-import type { AppSettings, AppSnapshot, ConnectionStatus } from './types'
+import { checkForUpdate, getSnapshot, installUpdate, refresh, saveSettings, setOutput, toggleOutput } from './api'
+import type { AppSettings, AppSnapshot, ConnectionStatus, UpdateInfo, UpdateProgress } from './types'
+
+const UPDATE_CHECK_DELAY_MS = 10_000
+const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1_000
 
 const statusLabels: Record<ConnectionStatus, string> = {
   connected: '연결됨',
@@ -36,6 +40,28 @@ function App() {
   const [draft, setDraft] = useState<AppSettings>(emptySnapshot.settings)
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
+  const [currentVersion, setCurrentVersion] = useState('')
+  const [availableUpdate, setAvailableUpdate] = useState<UpdateInfo | null>(null)
+  const [checkingUpdate, setCheckingUpdate] = useState(false)
+  const [installingUpdate, setInstallingUpdate] = useState(false)
+  const [updateProgress, setUpdateProgress] = useState<UpdateProgress | null>(null)
+
+  const checkUpdates = useCallback(async (showUpToDate: boolean) => {
+    setCheckingUpdate(true)
+    try {
+      const update = await checkForUpdate()
+      setAvailableUpdate(update)
+      if (update) {
+        setNotice(`Better Sonar ${update.version} 업데이트를 사용할 수 있습니다`)
+      } else if (showUpToDate) {
+        setNotice('최신 버전을 사용하고 있습니다')
+      }
+    } catch (error) {
+      if (showUpToDate) setNotice(`업데이트 확인에 실패했습니다: ${String(error)}`)
+    } finally {
+      setCheckingUpdate(false)
+    }
+  }, [])
 
   useEffect(() => {
     let alive = true
@@ -47,6 +73,9 @@ function App() {
         setDraft(value.settings)
       })
       .catch((error) => setNotice(String(error)))
+    getVersion()
+      .then(setCurrentVersion)
+      .catch(() => undefined)
 
     Promise.all([
       listen<AppSnapshot>('sonar-state', ({ payload }) => {
@@ -54,12 +83,18 @@ function App() {
         setSnapshot(payload)
       }),
       listen<string>('sonar-error', ({ payload }) => setNotice(payload)),
+      listen<UpdateProgress>('update-progress', ({ payload }) => setUpdateProgress(payload)),
     ]).then((values) => unlisteners.push(...values))
+
+    const initialCheck = window.setTimeout(() => void checkUpdates(false), UPDATE_CHECK_DELAY_MS)
+    const periodicCheck = window.setInterval(() => void checkUpdates(false), UPDATE_CHECK_INTERVAL_MS)
     return () => {
       alive = false
+      window.clearTimeout(initialCheck)
+      window.clearInterval(periodicCheck)
       unlisteners.forEach((unlisten) => unlisten())
     }
-  }, []) // 이벤트 구독은 앱 수명 동안 한 번만 필요하다.
+  }, [checkUpdates]) // 이벤트 구독과 업데이트 스케줄은 앱 수명 동안 한 번만 필요하다.
 
   const activeDevices = useMemo(
     () => snapshot.devices.filter((device) => device.state === 'active'),
@@ -84,6 +119,25 @@ function App() {
       setBusy(false)
     }
   }
+
+  async function applyUpdate() {
+    if (!availableUpdate) return
+    setInstallingUpdate(true)
+    setUpdateProgress({ stage: 'downloading', downloaded: 0, total: null })
+    setNotice(null)
+    try {
+      await installUpdate(availableUpdate.version)
+    } catch (error) {
+      setNotice(String(error))
+      setInstallingUpdate(false)
+      setUpdateProgress(null)
+    }
+  }
+
+  const progressPercent =
+    updateProgress?.total && updateProgress.total > 0
+      ? Math.min(100, Math.round((updateProgress.downloaded / updateProgress.total) * 100))
+      : null
 
   return (
     <main className="shell">
@@ -240,6 +294,58 @@ function App() {
         >
           설정 저장
         </button>
+      </section>
+
+      <section className="panel update-panel" aria-live="polite">
+        <div className="panel-heading update-heading">
+          <div>
+            <p className="section-label">앱 업데이트</p>
+            <h3>{availableUpdate ? `새 버전 ${availableUpdate.version}` : 'Better Sonar 최신 상태'}</h3>
+          </div>
+          {currentVersion && <span className="version-chip">현재 {currentVersion}</span>}
+        </div>
+
+        {availableUpdate ? (
+          <>
+            <p className="update-message">
+              설치가 끝나면 앱이 자동으로 재시작됩니다. 스트리밍 중이라면 작업이 끝난 뒤 설치하세요.
+            </p>
+            {availableUpdate.notes && <div className="release-notes">{availableUpdate.notes}</div>}
+            {installingUpdate && (
+              <div className="update-progress">
+                <div className="progress-track">
+                  <span style={{ width: `${progressPercent ?? 12}%` }} />
+                </div>
+                <small>
+                  {updateProgress?.stage === 'installing'
+                    ? '서명을 검증하고 업데이트를 설치하는 중…'
+                    : progressPercent === null
+                      ? '업데이트를 다운로드하는 중…'
+                      : `업데이트 다운로드 ${progressPercent}%`}
+                </small>
+              </div>
+            )}
+            <div className="update-actions">
+              <button disabled={checkingUpdate || installingUpdate} onClick={() => void checkUpdates(false)}>
+                다시 확인
+              </button>
+              <button className="install-button" disabled={installingUpdate} onClick={() => void applyUpdate()}>
+                {installingUpdate ? '업데이트 중…' : '다운로드 및 설치'}
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="update-message">시작 후와 실행 중 6시간마다 새 버전을 자동으로 확인합니다.</p>
+            <button
+              className="save-button"
+              disabled={checkingUpdate || installingUpdate}
+              onClick={() => void checkUpdates(true)}
+            >
+              {checkingUpdate ? '확인 중…' : '업데이트 확인'}
+            </button>
+          </>
+        )}
       </section>
 
       {notice && (
