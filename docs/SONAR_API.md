@@ -21,16 +21,18 @@ Better Sonar는 GG의 로컬 설정에서 GG API 주소를 확인한 뒤 `/subAp
 
 ## 사용하는 엔드포인트
 
-| 목적                      | 메서드와 경로                                                        | 확인 항목                                                        |
-| ------------------------- | -------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| Sonar 상태 및 API 탐색    | `GET /subApps` (GG HTTPS)                                            | `isEnabled`, `isReady`, `isRunning`, `metadata.webServerAddress` |
-| 모드 조회                 | `GET /mode`                                                          | Streamer 모드는 JSON 문자열 `"stream"`                           |
-| 장치 목록                 | `GET /audioDevices`                                                  | 물리 출력은 `dataFlow=render`, `role=none`, `isVad=false`        |
-| Personal/Stream 출력 조회 | `GET /streamRedirections`                                            | Personal=`monitoring`, Stream=`streaming`                        |
-| Personal 출력 변경        | `PUT /streamRedirections/monitoring/deviceId/{URL-encoded deviceId}` | 응답 후 상태 재조회                                              |
-| Streamer 음량 조회        | `GET /volumeSettings/streamer`                                       | `masters.stream.monitoring`이 Master - Personal                  |
+| 목적                   | 메서드와 경로                                                        | 확인 항목                                                             |
+| ---------------------- | -------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| Sonar 상태 및 API 탐색 | `GET /subApps` (GG HTTPS)                                            | `isEnabled`, `isReady`, `isRunning`, `metadata.webServerAddress`      |
+| 모드 조회              | `GET /mode`                                                          | Streamer 모드는 JSON 문자열 `"stream"`                                |
+| 장치 목록              | `GET /audioDevices`                                                  | 물리 장치는 `role=none`, `isVad=false`; 출력=`render`, 입력=`capture` |
+| 믹스 출력·마이크 조회  | `GET /streamRedirections`                                            | Personal=`monitoring`, Stream=`streaming`, 마이크=`mic`               |
+| Personal 출력 변경     | `PUT /streamRedirections/monitoring/deviceId/{URL-encoded deviceId}` | 응답 후 상태 재조회                                                   |
+| Stream 출력 변경       | `PUT /streamRedirections/streaming/deviceId/{URL-encoded deviceId}`  | 응답 후 상태 재조회                                                   |
+| 마이크 입력 변경       | `PUT /streamRedirections/mic/deviceId/{URL-encoded deviceId}`        | 활성 물리 캡처 장치인지 확인 후 상태 재조회                           |
+| Streamer 음량 조회     | `GET /volumeSettings/streamer`                                       | `masters.stream.monitoring`이 Master - Personal                       |
 
-Better Sonar는 `streaming` 경로에 변경 요청을 보내지 않습니다. Personal Mix 변경 전후의 Stream Mix 상태를 비교하고 달라진 경우 전환 실패로 처리합니다.
+각 리디렉션 변경 전후에 나머지 두 리디렉션의 전체 상태를 비교합니다. 선택하지 않은 믹스나 마이크가 함께 달라지면 전환 실패로 처리합니다.
 
 미디어 키는 위 HTTP 쓰기 API를 직접 호출하지 않습니다. Sonar 프로세스가 GG에서 받은 `GG_WS_ENDPOINT`와 `GG_API_AUTH_TOKEN`을 같은 사용자 권한으로 읽어 GG 이벤트 소켓에 인증한 뒤, Sonar가 자체 단축키에 사용하는 `EVENT_KEYBOARD_SHORTCUT`을 전송합니다. Master - Personal 동작 ID는 증가 `22`, 감소 `23`, 음소거 토글 `24`입니다. 이 경로를 사용해야 Sonar가 값을 변경한 뒤 `SONAR_EVENT_VOLUME_DATA`를 발행하므로 GG 믹서 UI도 동기화됩니다. 적용 결과는 `GET /volumeSettings/streamer`로 다시 확인합니다.
 

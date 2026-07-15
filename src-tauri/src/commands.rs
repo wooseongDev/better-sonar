@@ -29,6 +29,40 @@ pub async fn toggle_and_publish(app: &AppHandle) -> Result<AppSnapshot, String> 
     result
 }
 
+async fn finish_device_change(
+    app: &AppHandle,
+    runtime: &Arc<AppRuntime>,
+    result: Result<AppSnapshot, String>,
+) -> Result<AppSnapshot, String> {
+    match &result {
+        Ok(snapshot) => publish(app, snapshot).await,
+        Err(message) => {
+            let _ = app.emit("sonar-error", message);
+            let snapshot = runtime.refresh().await;
+            publish(app, &snapshot).await;
+        }
+    }
+    result
+}
+
+pub async fn set_personal_output_and_publish(app: &AppHandle, device_id: &str) -> Result<AppSnapshot, String> {
+    let runtime = app.state::<Arc<AppRuntime>>();
+    let result = runtime.set_output(device_id).await;
+    finish_device_change(app, &runtime, result).await
+}
+
+pub async fn set_stream_output_and_publish(app: &AppHandle, device_id: &str) -> Result<AppSnapshot, String> {
+    let runtime = app.state::<Arc<AppRuntime>>();
+    let result = runtime.set_stream_output(device_id).await;
+    finish_device_change(app, &runtime, result).await
+}
+
+pub async fn set_mic_input_and_publish(app: &AppHandle, device_id: &str) -> Result<AppSnapshot, String> {
+    let runtime = app.state::<Arc<AppRuntime>>();
+    let result = runtime.set_mic_input(device_id).await;
+    finish_device_change(app, &runtime, result).await
+}
+
 #[tauri::command]
 pub async fn get_snapshot(runtime: State<'_, Arc<AppRuntime>>) -> Result<AppSnapshot, String> {
     Ok(runtime.snapshot().await)
@@ -47,9 +81,8 @@ pub async fn set_output(
     runtime: State<'_, Arc<AppRuntime>>,
     device_id: String,
 ) -> Result<AppSnapshot, String> {
-    let snapshot = runtime.set_output(&device_id).await?;
-    publish(&app, &snapshot).await;
-    Ok(snapshot)
+    let result = runtime.set_output(&device_id).await;
+    finish_device_change(&app, &runtime, result).await
 }
 
 #[tauri::command]

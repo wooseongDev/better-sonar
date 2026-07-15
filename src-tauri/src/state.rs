@@ -45,6 +45,16 @@ impl AppRuntime {
                     .iter()
                     .find(|device| device.id == state.personal_device_id)
                     .map(|device| device.name.clone());
+                let stream_name = state
+                    .devices
+                    .iter()
+                    .find(|device| device.id == state.stream_device_id)
+                    .map(|device| device.name.clone());
+                let mic_name = state
+                    .input_devices
+                    .iter()
+                    .find(|device| device.id == state.mic_device_id)
+                    .map(|device| device.name.clone());
                 let missing_selection = [settings.headset_device_id.as_ref(), settings.speaker_device_id.as_ref()]
                     .into_iter()
                     .flatten()
@@ -64,9 +74,13 @@ impl AppRuntime {
                     message: message.into(),
                     mode: Some(state.mode),
                     devices: state.devices,
+                    input_devices: state.input_devices,
                     personal_device_id: Some(state.personal_device_id),
                     personal_device_name: current_name,
                     stream_device_id: Some(state.stream_device_id),
+                    stream_device_name: stream_name,
+                    mic_device_id: Some(state.mic_device_id),
+                    mic_device_name: mic_name,
                     settings,
                     last_updated_at: unix_millis(),
                 }
@@ -86,6 +100,32 @@ impl AppRuntime {
         let snapshot = self.refresh().await;
         if snapshot.personal_device_id.as_deref() != Some(device_id) {
             return Err("전환 후 Personal Mix 상태를 확인하지 못했습니다".into());
+        }
+        Ok(snapshot)
+    }
+
+    pub async fn set_stream_output(&self, device_id: &str) -> Result<AppSnapshot, String> {
+        let _guard = self.operation.lock().await;
+        self.client
+            .set_stream_output(device_id)
+            .await
+            .map_err(|error| error.to_string())?;
+        let snapshot = self.refresh().await;
+        if snapshot.stream_device_id.as_deref() != Some(device_id) {
+            return Err("전환 후 Stream Mix 상태를 확인하지 못했습니다".into());
+        }
+        Ok(snapshot)
+    }
+
+    pub async fn set_mic_input(&self, device_id: &str) -> Result<AppSnapshot, String> {
+        let _guard = self.operation.lock().await;
+        self.client
+            .set_mic_input(device_id)
+            .await
+            .map_err(|error| error.to_string())?;
+        let snapshot = self.refresh().await;
+        if snapshot.mic_device_id.as_deref() != Some(device_id) {
+            return Err("전환 후 마이크 입력 상태를 확인하지 못했습니다".into());
         }
         Ok(snapshot)
     }

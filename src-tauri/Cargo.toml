@@ -1,6 +1,6 @@
 [package]
 name = "better-sonar"
-version = "0.0.4"
+version = "0.0.5"
 description = "Fast Personal Mix output switcher for SteelSeries Sonar for Streamers"
 authors = ["Better Sonar contributors"]
 edition = "2024"

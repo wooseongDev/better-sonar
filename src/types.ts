@@ -27,9 +27,13 @@ export interface AppSnapshot {
   message: string
   mode: string | null
   devices: AudioDevice[]
+  inputDevices: AudioDevice[]
   personalDeviceId: string | null
   personalDeviceName: string | null
   streamDeviceId: string | null
+  streamDeviceName: string | null
+  micDeviceId: string | null
+  micDeviceName: string | null
   settings: AppSettings
   lastUpdatedAt: number
 }

@@ -91,8 +91,42 @@ struct RawStreamerVolumeSettings {
 pub struct SonarState {
     pub mode: String,
     pub devices: Vec<AudioDevice>,
+    pub input_devices: Vec<AudioDevice>,
     pub personal_device_id: String,
     pub stream_device_id: String,
+    pub mic_device_id: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RedirectionTarget {
+    Personal,
+    Stream,
+    Mic,
+}
+
+impl RedirectionTarget {
+    fn id(self) -> &'static str {
+        match self {
+            Self::Personal => "monitoring",
+            Self::Stream => "streaming",
+            Self::Mic => "mic",
+        }
+    }
+
+    fn data_flow(self) -> &'static str {
+        match self {
+            Self::Personal | Self::Stream => "render",
+            Self::Mic => "capture",
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Personal => "Personal Mix",
+            Self::Stream => "Stream Mix",
+            Self::Mic => "마이크 입력",
+        }
+    }
 }
 
 pub struct SonarClient {
@@ -200,30 +234,55 @@ impl SonarClient {
         }
         let raw_devices: Vec<RawAudioDevice> = self.get_json(format!("{base}/audioDevices")).await?;
         let devices = raw_devices
-            .into_iter()
+            .iter()
             .filter(|d| d.data_flow == "render" && d.role == "none" && !d.is_vad)
             .map(|d| AudioDevice {
-                id: d.id,
-                name: d.friendly_name,
-                state: d.state,
+                id: d.id.clone(),
+                name: d.friendly_name.clone(),
+                state: d.state.clone(),
+                channels: d.channels,
+            })
+            .collect();
+        let input_devices = raw_devices
+            .iter()
+            .filter(|d| d.data_flow == "capture" && d.role == "none" && !d.is_vad)
+            .map(|d| AudioDevice {
+                id: d.id.clone(),
+                name: d.friendly_name.clone(),
+                state: d.state.clone(),
                 channels: d.channels,
             })
             .collect();
         let redirections = self.redirections(&base).await?;
         let personal = Self::find_redirection(&redirections, "monitoring")?;
         let stream = Self::find_redirection(&redirections, "streaming")?;
+        let mic = Self::find_redirection(&redirections, "mic")?;
         if !personal.is_running {
             return Err(SonarError::Verification("Personal Mix가 실행 중이 아닙니다".into()));
         }
         Ok(SonarState {
             mode,
             devices,
+            input_devices,
             personal_device_id: personal.device_id.clone(),
             stream_device_id: stream.device_id.clone(),
+            mic_device_id: mic.device_id.clone(),
         })
     }
 
     pub async fn set_personal_output(&self, device_id: &str) -> Result<(), SonarError> {
+        self.set_redirection(RedirectionTarget::Personal, device_id).await
+    }
+
+    pub async fn set_stream_output(&self, device_id: &str) -> Result<(), SonarError> {
+        self.set_redirection(RedirectionTarget::Stream, device_id).await
+    }
+
+    pub async fn set_mic_input(&self, device_id: &str) -> Result<(), SonarError> {
+        self.set_redirection(RedirectionTarget::Mic, device_id).await
+    }
+
+    async fn set_redirection(&self, target: RedirectionTarget, device_id: &str) -> Result<(), SonarError> {
         let base = self.base().await?;
         let mode: String = self.get_json(format!("{base}/mode")).await?;
         if mode != "stream" {
@@ -231,37 +290,50 @@ impl SonarClient {
         }
         let devices: Vec<RawAudioDevice> = self.get_json(format!("{base}/audioDevices")).await?;
         if !devices.iter().any(|d| {
-            d.id == device_id && d.data_flow == "render" && d.role == "none" && !d.is_vad && d.state == "active"
+            d.id == device_id
+                && d.data_flow == target.data_flow()
+                && d.role == "none"
+                && !d.is_vad
+                && d.state == "active"
         }) {
             return Err(SonarError::DeviceUnavailable);
         }
 
         let before = self.redirections(&base).await?;
-        let stream_before = Self::find_redirection(&before, "streaming")?;
-        let stream_fingerprint =
-            serde_json::to_value(stream_before).map_err(|error| SonarError::ApiChanged(error.to_string()))?;
+        for id in ["monitoring", "streaming", "mic"] {
+            Self::find_redirection(&before, id)?;
+        }
         let encoded = urlencoding::encode(device_id);
         self.http
-            .put(format!("{base}/streamRedirections/monitoring/deviceId/{encoded}"))
+            .put(format!("{base}/streamRedirections/{}/deviceId/{encoded}", target.id()))
             .send()
             .await?
             .error_for_status()?;
 
         tokio::time::sleep(Duration::from_millis(180)).await;
         let after = self.redirections(&base).await?;
-        let personal_after = Self::find_redirection(&after, "monitoring")?;
-        let stream_after = Self::find_redirection(&after, "streaming")?;
-        if personal_after.device_id != device_id {
-            return Err(SonarError::Verification(
-                "Personal Mix가 요청한 장치로 변경되지 않았습니다".into(),
-            ));
+        let target_after = Self::find_redirection(&after, target.id())?;
+        if target_after.device_id != device_id {
+            return Err(SonarError::Verification(format!(
+                "{}이(가) 요청한 장치로 변경되지 않았습니다",
+                target.label()
+            )));
         }
-        let after_fingerprint =
-            serde_json::to_value(stream_after).map_err(|error| SonarError::ApiChanged(error.to_string()))?;
-        if stream_fingerprint != after_fingerprint {
-            return Err(SonarError::Verification(
-                "Stream Mix가 함께 변경되어 작업을 중단했습니다".into(),
-            ));
+
+        for id in ["monitoring", "streaming", "mic"] {
+            if id == target.id() {
+                continue;
+            }
+            let before_value = serde_json::to_value(Self::find_redirection(&before, id)?)
+                .map_err(|error| SonarError::ApiChanged(error.to_string()))?;
+            let after_value = serde_json::to_value(Self::find_redirection(&after, id)?)
+                .map_err(|error| SonarError::ApiChanged(error.to_string()))?;
+            if before_value != after_value {
+                return Err(SonarError::Verification(format!(
+                    "{} 변경 중 {id} 리디렉션이 함께 변경되었습니다",
+                    target.label()
+                )));
+            }
         }
         Ok(())
     }
@@ -346,6 +418,8 @@ mod tests {
     const HEADSET_ID: &str = "{0.0.0.00000000}.{headset}";
     const SPEAKER_ID: &str = "{0.0.0.00000000}.{speaker}";
     const STREAM_ID: &str = "{0.0.0.00000000}.{stream}";
+    const MIC_ID: &str = "{0.0.1.00000000}.{microphone}";
+    const SECOND_MIC_ID: &str = "{0.0.1.00000000}.{second-microphone}";
 
     #[derive(Clone)]
     struct MockState {
@@ -356,6 +430,7 @@ mod tests {
         mode: String,
         personal_id: String,
         stream_id: String,
+        mic_id: String,
         mutate_stream_on_put: bool,
         ignore_put: bool,
         put_count: usize,
@@ -373,6 +448,7 @@ mod tests {
                 mode: "stream".into(),
                 personal_id: HEADSET_ID.into(),
                 stream_id: STREAM_ID.into(),
+                mic_id: MIC_ID.into(),
                 mutate_stream_on_put: false,
                 ignore_put: false,
                 put_count: 0,
@@ -426,7 +502,16 @@ mod tests {
             },
             {
                 "friendlyName": "Microphone",
-                "id": "capture",
+                "id": MIC_ID,
+                "dataFlow": "capture",
+                "role": "none",
+                "channels": 1,
+                "state": "active",
+                "isVad": false
+            },
+            {
+                "friendlyName": "Second microphone",
+                "id": SECOND_MIC_ID,
                 "dataFlow": "capture",
                 "role": "none",
                 "channels": 1,
@@ -458,6 +543,12 @@ mod tests {
                 "deviceId": inner.personal_id,
                 "status": [{"role": "game", "isEnabled": true}],
                 "isRunning": true
+            },
+            {
+                "streamRedirectionId": "mic",
+                "deviceId": inner.mic_id,
+                "status": [],
+                "isRunning": true
             }
         ]))
     }
@@ -470,6 +561,24 @@ mod tests {
         }
         if inner.mutate_stream_on_put {
             inner.stream_id = "stream-was-modified".into();
+        }
+        StatusCode::OK
+    }
+
+    async fn set_streaming(State(state): State<MockState>, Path(device_id): Path<String>) -> StatusCode {
+        let mut inner = state.inner.lock().await;
+        inner.put_count += 1;
+        if !inner.ignore_put {
+            inner.stream_id = device_id;
+        }
+        StatusCode::OK
+    }
+
+    async fn set_mic(State(state): State<MockState>, Path(device_id): Path<String>) -> StatusCode {
+        let mut inner = state.inner.lock().await;
+        inner.put_count += 1;
+        if !inner.ignore_put {
+            inner.mic_id = device_id;
         }
         StatusCode::OK
     }
@@ -524,6 +633,11 @@ mod tests {
                 "/streamRedirections/monitoring/deviceId/{*device_id}",
                 put(set_monitoring),
             )
+            .route(
+                "/streamRedirections/streaming/deviceId/{*device_id}",
+                put(set_streaming),
+            )
+            .route("/streamRedirections/mic/deviceId/{*device_id}", put(set_mic))
             .route("/volumeSettings/streamer", get(volume_settings))
             .route(
                 "/volumeSettings/streamer/monitoring/master/volume/{volume}",
@@ -551,7 +665,9 @@ mod tests {
         assert_eq!(state.mode, "stream");
         assert_eq!(state.personal_device_id, HEADSET_ID);
         assert_eq!(state.stream_device_id, STREAM_ID);
+        assert_eq!(state.mic_device_id, MIC_ID);
         assert_eq!(state.devices.len(), 3);
+        assert_eq!(state.input_devices.len(), 2);
         assert_eq!(state.devices[0].name, "Headphones");
         assert_eq!(state.devices[1].name, "Speakers");
         assert_eq!(state.devices[2].state, "disabled");
@@ -613,7 +729,43 @@ mod tests {
 
         let error = client.set_personal_output(SPEAKER_ID).await.unwrap_err();
 
-        assert!(matches!(error, SonarError::Verification(message) if message.contains("Stream Mix")));
+        assert!(matches!(error, SonarError::Verification(message) if message.contains("streaming")));
+    }
+
+    #[tokio::test]
+    async fn set_stream_output_changes_only_streaming_redirection() {
+        let (client, state) = server(MockInner::default()).await;
+
+        client.set_stream_output(SPEAKER_ID).await.unwrap();
+
+        let inner = state.inner.lock().await;
+        assert_eq!(inner.personal_id, HEADSET_ID);
+        assert_eq!(inner.stream_id, SPEAKER_ID);
+        assert_eq!(inner.mic_id, MIC_ID);
+        assert_eq!(inner.put_count, 1);
+    }
+
+    #[tokio::test]
+    async fn set_mic_input_changes_only_mic_redirection() {
+        let (client, state) = server(MockInner::default()).await;
+
+        client.set_mic_input(SECOND_MIC_ID).await.unwrap();
+
+        let inner = state.inner.lock().await;
+        assert_eq!(inner.personal_id, HEADSET_ID);
+        assert_eq!(inner.stream_id, STREAM_ID);
+        assert_eq!(inner.mic_id, SECOND_MIC_ID);
+        assert_eq!(inner.put_count, 1);
+    }
+
+    #[tokio::test]
+    async fn set_mic_input_rejects_render_device() {
+        let (client, state) = server(MockInner::default()).await;
+
+        let error = client.set_mic_input(SPEAKER_ID).await.unwrap_err();
+
+        assert!(matches!(error, SonarError::DeviceUnavailable));
+        assert_eq!(state.inner.lock().await.put_count, 0);
     }
 
     #[tokio::test]

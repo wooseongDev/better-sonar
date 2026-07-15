@@ -22,9 +22,13 @@ const emptySnapshot: AppSnapshot = {
   message: 'Sonar 연결을 확인하고 있습니다',
   mode: null,
   devices: [],
+  inputDevices: [],
   personalDeviceId: null,
   personalDeviceName: null,
   streamDeviceId: null,
+  streamDeviceName: null,
+  micDeviceId: null,
+  micDeviceName: null,
   settings: {
     headsetDeviceId: null,
     speakerDeviceId: null,
