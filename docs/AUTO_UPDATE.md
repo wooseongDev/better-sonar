@@ -110,6 +110,16 @@ WSLENV="TAURI_SIGNING_PRIVATE_KEY:TAURI_SIGNING_PRIVATE_KEY_PASSWORD" \
 - `%APPDATA%`의 Better Sonar 설정 유지 여부
 - Windows 설치 앱 목록의 중복 여부
 
+### 2026-07-15 실기기 검증 기록
+
+- 기존 v0.0.1 NSIS 설치본을 공개 [v0.0.3](https://github.com/wooseongDev/better-sonar/releases/tag/v0.0.3) NSIS로 수동 부트스트랩했다.
+- v0.0.3 앱이 공개 `latest.json`의 v0.0.4를 감지하고, 사용자 승인 전에는 다운로드하지 않는 것을 확인했다.
+- 앱의 **다운로드 및 설치** 동작으로 공개 [v0.0.4](https://github.com/wooseongDev/better-sonar/releases/tag/v0.0.4)를 내려받아 서명 검증, passive 설치, 자동 재시작까지 완료했다.
+- 재시작 후 실행 파일과 Windows 제거 레지스트리 버전이 모두 v0.0.4였고, Better Sonar 프로세스가 실행 중임을 확인했다.
+- 기존 장치 설정이 유지됐고 Windows 설치 앱 목록에는 Better Sonar 항목이 하나만 남았다.
+- v0.0.3 빌드 실행: <https://github.com/wooseongDev/better-sonar/actions/runs/29410556541>
+- v0.0.4 빌드 실행: <https://github.com/wooseongDev/better-sonar/actions/runs/29411165607>
+
 ## GitHub 설정 점검
 
 - `release` Environment에 `TAURI_SIGNING_PRIVATE_KEY`와 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`가 있어야 한다.
