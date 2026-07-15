@@ -4,29 +4,100 @@ use tauri::{
     tray::TrayIconBuilder,
 };
 
-use crate::{
-    commands,
-    models::{AppSnapshot, AudioDevice, ConnectionStatus},
-    state::AppRuntime,
-};
+use crate::{commands, models::AppSnapshot, state::AppRuntime};
 
 const PERSONAL_PREFIX: &str = "personal-device:";
 const STREAM_PREFIX: &str = "stream-device:";
 const MIC_PREFIX: &str = "mic-device:";
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct MenuDevice {
+    id: String,
+    name: String,
+    checked: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct MenuSignature {
+    status_text: String,
+    toggle_text: String,
+    can_toggle: bool,
+    connected: bool,
+    personal_devices: Vec<MenuDevice>,
+    stream_devices: Vec<MenuDevice>,
+    mic_devices: Vec<MenuDevice>,
+}
+
+impl MenuSignature {
+    fn from_snapshot(snapshot: Option<&AppSnapshot>) -> Self {
+        let status_text = snapshot
+            .and_then(|value| value.personal_device_name.as_deref())
+            .map(|name| format!("현재: {name}"))
+            .unwrap_or_else(|| {
+                snapshot
+                    .map(|value| value.message.clone())
+                    .unwrap_or_else(|| "연결 상태 확인 중…".into())
+            });
+        let toggle_text = snapshot
+            .map(|value| {
+                if value.personal_device_id == value.settings.headset_device_id {
+                    "스피커로 전환"
+                } else {
+                    "헤드셋으로 전환"
+                }
+            })
+            .unwrap_or("헤드셋 ↔ 스피커 전환")
+            .into();
+        let can_toggle = snapshot.is_some_and(|value| {
+            value.status == crate::models::ConnectionStatus::Connected
+                && value.settings.headset_device_id.is_some()
+                && value.settings.speaker_device_id.is_some()
+        });
+        let connected = snapshot.is_some_and(|value| value.status == crate::models::ConnectionStatus::Connected);
+        let menu_devices = |devices: &[crate::models::AudioDevice], current_device_id: Option<&str>| {
+            devices
+                .iter()
+                .filter(|device| device.state == "active")
+                .map(|device| MenuDevice {
+                    id: device.id.clone(),
+                    name: device.name.clone(),
+                    checked: current_device_id == Some(device.id.as_str()),
+                })
+                .collect()
+        };
+        let output_devices = snapshot.map(|value| value.devices.as_slice()).unwrap_or_default();
+
+        Self {
+            status_text,
+            toggle_text,
+            can_toggle,
+            connected,
+            personal_devices: menu_devices(
+                output_devices,
+                snapshot.and_then(|value| value.personal_device_id.as_deref()),
+            ),
+            stream_devices: menu_devices(
+                output_devices,
+                snapshot.and_then(|value| value.stream_device_id.as_deref()),
+            ),
+            mic_devices: menu_devices(
+                snapshot.map(|value| value.input_devices.as_slice()).unwrap_or_default(),
+                snapshot.and_then(|value| value.mic_device_id.as_deref()),
+            ),
+        }
+    }
+}
+
+struct TrayMenuCache(std::sync::Mutex<MenuSignature>);
+
 fn device_submenu(
     app: &AppHandle,
     label: &str,
     prefix: &str,
-    devices: &[AudioDevice],
-    current_device_id: Option<&str>,
+    devices: &[MenuDevice],
     connected: bool,
 ) -> tauri::Result<Submenu<tauri::Wry>> {
-    let active_devices = devices
-        .iter()
-        .filter(|device| device.state == "active")
-        .collect::<Vec<_>>();
-    let items = active_devices
+    let items = devices
         .iter()
         .map(|device| {
             CheckMenuItem::with_id(
@@ -34,7 +105,7 @@ fn device_submenu(
                 format!("{prefix}{}", urlencoding::encode(&device.id)),
                 &device.name,
                 connected,
-                current_device_id == Some(device.id.as_str()),
+                device.checked,
                 None::<&str>,
             )
         })
@@ -62,55 +133,35 @@ fn device_submenu(
     Submenu::with_items(app, label, connected, &item_refs)
 }
 
-fn create_menu(app: &AppHandle, snapshot: Option<&AppSnapshot>) -> tauri::Result<Menu<tauri::Wry>> {
-    let status_text = snapshot
-        .and_then(|value| value.personal_device_name.as_deref())
-        .map(|name| format!("현재: {name}"))
-        .unwrap_or_else(|| {
-            snapshot
-                .map(|value| value.message.clone())
-                .unwrap_or_else(|| "연결 상태 확인 중…".into())
-        });
-    let status = MenuItem::with_id(app, "status", status_text, false, None::<&str>)?;
-    let toggle_text = snapshot
-        .map(|value| {
-            if value.personal_device_id == value.settings.headset_device_id {
-                "스피커로 전환"
-            } else {
-                "헤드셋으로 전환"
-            }
-        })
-        .unwrap_or("헤드셋 ↔ 스피커 전환");
-    let can_toggle = snapshot.is_some_and(|value| {
-        value.status == crate::models::ConnectionStatus::Connected
-            && value.settings.headset_device_id.is_some()
-            && value.settings.speaker_device_id.is_some()
-    });
-    let toggle = MenuItem::with_id(app, "toggle", toggle_text, can_toggle, None::<&str>)?;
-    let connected = snapshot.is_some_and(|value| value.status == ConnectionStatus::Connected);
+fn create_menu(app: &AppHandle, signature: &MenuSignature) -> tauri::Result<Menu<tauri::Wry>> {
+    let status = MenuItem::with_id(app, "status", &signature.status_text, false, None::<&str>)?;
+    let toggle = MenuItem::with_id(
+        app,
+        "toggle",
+        &signature.toggle_text,
+        signature.can_toggle,
+        None::<&str>,
+    )?;
     let personal = device_submenu(
         app,
         "개인 믹스",
         PERSONAL_PREFIX,
-        snapshot.map(|value| value.devices.as_slice()).unwrap_or_default(),
-        snapshot.and_then(|value| value.personal_device_id.as_deref()),
-        connected,
+        &signature.personal_devices,
+        signature.connected,
     )?;
     let stream = device_submenu(
         app,
         "스트림 믹스",
         STREAM_PREFIX,
-        snapshot.map(|value| value.devices.as_slice()).unwrap_or_default(),
-        snapshot.and_then(|value| value.stream_device_id.as_deref()),
-        connected,
+        &signature.stream_devices,
+        signature.connected,
     )?;
     let mic = device_submenu(
         app,
         "마이크 입력",
         MIC_PREFIX,
-        snapshot.map(|value| value.input_devices.as_slice()).unwrap_or_default(),
-        snapshot.and_then(|value| value.mic_device_id.as_deref()),
-        connected,
+        &signature.mic_devices,
+        signature.connected,
     )?;
     let show = MenuItem::with_id(app, "show", "Better Sonar 열기", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "종료", true, None::<&str>)?;
@@ -138,7 +189,9 @@ fn device_id_from_event(event_id: &str, prefix: &str) -> Option<String> {
 }
 
 pub fn build(app: &AppHandle) -> tauri::Result<()> {
-    let menu = create_menu(app, None)?;
+    let signature = MenuSignature::from_snapshot(None);
+    let menu = create_menu(app, &signature)?;
+    app.manage(TrayMenuCache(std::sync::Mutex::new(signature)));
 
     TrayIconBuilder::with_id("main-tray")
         .tooltip("Better Sonar")
@@ -206,13 +259,79 @@ pub async fn update(app: &AppHandle) {
     let runtime = app.state::<std::sync::Arc<AppRuntime>>();
     let snapshot = runtime.snapshot().await;
     if let Some(tray) = app.tray_by_id("main-tray") {
-        if let Ok(menu) = create_menu(app, Some(&snapshot)) {
-            let _ = tray.set_menu(Some(menu));
+        let signature = MenuSignature::from_snapshot(Some(&snapshot));
+        let cache = app.state::<TrayMenuCache>();
+        let mut current = cache.0.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        if *current != signature
+            && let Ok(menu) = create_menu(app, &signature)
+            && tray.set_menu(Some(menu)).is_ok()
+        {
+            *current = signature;
         }
+        drop(current);
         let tooltip = match snapshot.personal_device_name {
             Some(name) => format!("Better Sonar · {name}"),
             None => format!("Better Sonar · {}", snapshot.message),
         };
         let _ = tray.set_tooltip(Some(tooltip));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::models::{AppSettings, AppSnapshot, AudioDevice, ConnectionStatus};
+
+    use super::MenuSignature;
+
+    fn snapshot() -> AppSnapshot {
+        AppSnapshot {
+            status: ConnectionStatus::Connected,
+            message: "연결됨".into(),
+            mode: Some("stream".into()),
+            devices: vec![AudioDevice {
+                id: "speaker".into(),
+                name: "Speakers".into(),
+                state: "active".into(),
+                channels: 2,
+            }],
+            input_devices: vec![AudioDevice {
+                id: "microphone".into(),
+                name: "Microphone".into(),
+                state: "active".into(),
+                channels: 1,
+            }],
+            personal_device_id: Some("speaker".into()),
+            personal_device_name: Some("Speakers".into()),
+            stream_device_id: Some("speaker".into()),
+            stream_device_name: Some("Speakers".into()),
+            mic_device_id: Some("microphone".into()),
+            mic_device_name: Some("Microphone".into()),
+            settings: AppSettings::default(),
+            last_updated_at: 1,
+        }
+    }
+
+    #[test]
+    fn periodic_timestamp_changes_do_not_change_the_menu_signature() {
+        let first = snapshot();
+        let mut refreshed = first.clone();
+        refreshed.last_updated_at = 2;
+
+        assert_eq!(
+            MenuSignature::from_snapshot(Some(&first)),
+            MenuSignature::from_snapshot(Some(&refreshed))
+        );
+    }
+
+    #[test]
+    fn selected_device_changes_do_change_the_menu_signature() {
+        let first = snapshot();
+        let mut changed = first.clone();
+        changed.personal_device_id = Some("other".into());
+
+        assert_ne!(
+            MenuSignature::from_snapshot(Some(&first)),
+            MenuSignature::from_snapshot(Some(&changed))
+        );
     }
 }
