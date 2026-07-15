@@ -33,3 +33,16 @@ export interface AppSnapshot {
   settings: AppSettings
   lastUpdatedAt: number
 }
+
+export interface UpdateInfo {
+  currentVersion: string
+  version: string
+  notes: string | null
+  publishedAt: string | null
+}
+
+export interface UpdateProgress {
+  stage: 'downloading' | 'installing'
+  downloaded: number
+  total: number | null
+}

@@ -332,6 +332,83 @@ footer {
   padding-top: 4px;
 }
 
+.update-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.version-chip {
+  flex: 0 0 auto;
+  padding: 5px 8px;
+  border: 1px solid #2b373f;
+  border-radius: 8px;
+  color: #84919b;
+  background: #0d1217;
+  font-size: 10px;
+}
+.update-message {
+  margin: 0 0 14px;
+  color: #81909a;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.release-notes {
+  max-height: 130px;
+  margin: 0 0 14px;
+  padding: 11px 12px;
+  overflow: auto;
+  border: 1px solid #263039;
+  border-radius: 10px;
+  background: #0c1116;
+  color: #aab5bd;
+  font-size: 11px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+.update-progress {
+  margin: 4px 0 14px;
+}
+.progress-track {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 10px;
+  background: #28323a;
+}
+.progress-track span {
+  display: block;
+  min-width: 12%;
+  height: 100%;
+  border-radius: inherit;
+  background: #42e7c4;
+  transition: width 0.2s ease;
+}
+.update-progress small {
+  display: block;
+  margin-top: 7px;
+  color: #74828c;
+  font-size: 10px;
+}
+.update-actions {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 9px;
+}
+.update-actions button {
+  height: 40px;
+  border: 1px solid #29343d;
+  border-radius: 10px;
+  background: #161c23;
+  color: #aab5bd;
+  font-size: 12px;
+  font-weight: 650;
+}
+.update-actions .install-button {
+  border-color: #42e7c4;
+  background: #42e7c4;
+  color: #07110f;
+}
+
 @media (max-width: 560px) {
   .shell {
     padding: 22px 16px 18px;

@@ -12,10 +12,11 @@ jobs:
   release-windows:
     name: Build and draft release
     runs-on: windows-latest
+    environment: release
 
     steps:
       - name: Check out the tagged commit
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           persist-credentials: false
 
@@ -33,35 +34,43 @@ jobs:
           $tagVersion = $Matches[1]
           $packageVersion = (Get-Content package.json -Raw | ConvertFrom-Json).version
           $tauriVersion = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          $cargoToml = Get-Content src-tauri/Cargo.toml -Raw
+          $cargoMatch = [regex]::Match($cargoToml, '(?m)^version\s*=\s*"([^"]+)"')
+          if (-not $cargoMatch.Success) {
+            throw 'Could not read the package version from src-tauri/Cargo.toml.'
+          }
+          $cargoVersion = $cargoMatch.Groups[1].Value
 
-          if ($tagVersion -ne $packageVersion -or $tagVersion -ne $tauriVersion) {
-            throw "Version mismatch: tag='$tagVersion', package.json='$packageVersion', tauri.conf.json='$tauriVersion'."
+          if ($tagVersion -ne $packageVersion -or $tagVersion -ne $tauriVersion -or $tagVersion -ne $cargoVersion) {
+            throw "Version mismatch: tag='$tagVersion', package.json='$packageVersion', tauri.conf.json='$tauriVersion', Cargo.toml='$cargoVersion'."
           }
 
           Write-Host "Release versions match: $tagVersion"
 
       - name: Set up pnpm from packageManager
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
           node-version-file: .nvmrc
           cache: pnpm
 
       - name: Set up Rust stable
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
 
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
-      # Windows signing can be added here later by configuring Tauri's signing
-      # environment variables from GitHub Actions secrets.
+      # Windows Authenticode signing can be added here later. It is separate
+      # from the mandatory Tauri updater signature configured below.
       - name: Build installers and create draft release
         id: tauri
-        uses: tauri-apps/tauri-action@v1
+        uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: Better Sonar ${{ github.ref_name }}
@@ -72,7 +81,49 @@ jobs:
           releaseDraft: true
           prerelease: false
           tauriScript: pnpm tauri
+          uploadUpdaterJson: true
+          uploadUpdaterSignatures: true
+          updaterJsonPreferNsis: true
           args: --bundles nsis,msi -- --locked
+
+      - name: Verify updater manifest
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          New-Item -ItemType Directory -Force artifacts | Out-Null
+          gh release download $env:RELEASE_TAG --pattern latest.json --dir artifacts --clobber
+
+          $manifest = Get-Content artifacts/latest.json -Raw | ConvertFrom-Json
+          $expectedVersion = $env:RELEASE_TAG -replace '^v', ''
+          if ($manifest.version -ne $expectedVersion) {
+            throw "Updater manifest version mismatch: expected='$expectedVersion', actual='$($manifest.version)'."
+          }
+
+          $nsis = @(Get-ChildItem target/release/bundle/nsis/*.exe -File)
+          $nsisSignature = @(Get-ChildItem target/release/bundle/nsis/*.sig -File)
+          if ($nsis.Count -ne 1 -or $nsisSignature.Count -ne 1) {
+            throw "Expected one NSIS installer and signature; found installer=$($nsis.Count), signature=$($nsisSignature.Count)."
+          }
+
+          $expectedSignature = (Get-Content $nsisSignature[0].FullName -Raw).Trim()
+          foreach ($target in @('windows-x86_64-nsis', 'windows-x86_64')) {
+            $entry = $manifest.platforms.$target
+            if ($null -eq $entry) {
+              throw "Updater manifest is missing platform '$target'."
+            }
+            if ($entry.url -notmatch '-setup\.exe$') {
+              throw "Updater platform '$target' does not point to an NSIS installer: '$($entry.url)'."
+            }
+            if ([string]::IsNullOrWhiteSpace($entry.signature) -or $entry.signature.Trim() -ne $expectedSignature) {
+              throw "Updater platform '$target' does not contain the generated NSIS signature."
+            }
+          }
+
+          Write-Host "Updater manifest verified for Better Sonar $expectedVersion."
 
       - name: Create SHA-256 checksums
         shell: pwsh
@@ -81,9 +132,13 @@ jobs:
 
           $nsis = @(Get-ChildItem target/release/bundle/nsis/*.exe -File)
           $msi = @(Get-ChildItem target/release/bundle/msi/*.msi -File)
+          $signatures = @(
+            Get-ChildItem target/release/bundle/nsis/*.sig -File
+            Get-ChildItem target/release/bundle/msi/*.sig -File
+          )
 
-          if ($nsis.Count -ne 1 -or $msi.Count -ne 1) {
-            throw "Expected exactly one NSIS installer and one MSI installer; found NSIS=$($nsis.Count), MSI=$($msi.Count)."
+          if ($nsis.Count -ne 1 -or $msi.Count -ne 1 -or $signatures.Count -ne 2) {
+            throw "Expected one NSIS installer, one MSI installer, and two updater signatures; found NSIS=$($nsis.Count), MSI=$($msi.Count), signatures=$($signatures.Count)."
           }
 
           New-Item -ItemType Directory -Force artifacts | Out-Null
