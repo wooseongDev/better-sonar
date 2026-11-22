@@ -47,16 +47,7 @@ impl AppRuntime {
                     .iter()
                     .find(|device| device.id == state.mic_device_id)
                     .map(|device| device.name.clone());
-                let missing_selection = [settings.headset_device_id.as_ref(), settings.speaker_device_id.as_ref()]
-                    .into_iter()
-                    .flatten()
-                    .find(|id| {
-                        !state
-                            .devices
-                            .iter()
-                            .any(|device| &device.id == *id && device.state == "active")
-                    });
-                let message = if missing_selection.is_some() {
+                let message = if settings.has_missing_output(&state.devices) {
                     "Sonar for Streamers 연결됨. 저장된 장치 중 하나가 연결되어 있지 않습니다"
                 } else {
                     "Sonar for Streamers에 연결되었습니다"

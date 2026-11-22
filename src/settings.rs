@@ -37,7 +37,7 @@ mod tests {
     use tempfile::tempdir;
 
     use super::{load, save};
-    use crate::models::AppSettings;
+    use crate::models::{AppSettings, ThemePreference};
 
     #[test]
     fn settings_round_trip_preserves_device_ids_shortcut_and_autostart() {
@@ -49,6 +49,7 @@ mod tests {
             shortcut: "Ctrl+Shift+F10".into(),
             autostart: true,
             media_keys_enabled: false,
+            theme: ThemePreference::Dark,
         };
 
         save(&path, &AppSettings::default()).unwrap();
@@ -69,7 +70,7 @@ mod tests {
     }
 
     #[test]
-    fn legacy_settings_enable_media_keys_by_default() {
+    fn legacy_settings_enable_media_keys_and_follow_system_theme_by_default() {
         let directory = tempdir().unwrap();
         let path = directory.path().join("settings.json");
         std::fs::write(
@@ -77,12 +78,15 @@ mod tests {
             r#"{
                 "headsetDeviceId": null,
                 "speakerDeviceId": null,
-                "shortcut": "Ctrl+Alt+F9",
+                "shortcut": "Ctrl+Shift+F8",
                 "autostart": false
             }"#,
         )
         .unwrap();
 
-        assert!(load(&path).media_keys_enabled);
+        let settings = load(&path);
+        assert!(settings.media_keys_enabled);
+        assert_eq!(settings.shortcut, "Ctrl+Shift+F8");
+        assert_eq!(settings.theme, ThemePreference::System);
     }
 }

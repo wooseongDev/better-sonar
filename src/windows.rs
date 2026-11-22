@@ -9,6 +9,7 @@ use windows::{
         Foundation::{
             CloseHandle, ERROR_ALREADY_EXISTS, ERROR_SUCCESS, GetLastError, HANDLE, HWND, SetLastError, WAIT_OBJECT_0,
         },
+        Graphics::Dwm::{DWMWA_CAPTION_COLOR, DWMWA_TEXT_COLOR, DwmSetWindowAttribute},
         System::{
             Registry::{HKEY_CURRENT_USER, RRF_RT_REG_DWORD, RegGetValueW},
             Threading::{CreateEventW, CreateMutexW, INFINITE, SetEvent, WaitForSingleObject},
@@ -48,6 +49,24 @@ pub fn taskbar_uses_light_theme() -> bool {
         )
     };
     result == ERROR_SUCCESS && light != 0
+}
+
+pub fn set_titlebar_colors(window: &Window, background: u32, foreground: u32) {
+    let Some(hwnd) = hwnd(window) else {
+        return;
+    };
+    for (attribute, rgb) in [(DWMWA_CAPTION_COLOR, background), (DWMWA_TEXT_COLOR, foreground)] {
+        let colorref = rgb.swap_bytes() >> 8;
+        // Older Windows versions use the system title bar when these attributes are unavailable.
+        let _ = unsafe {
+            DwmSetWindowAttribute(
+                hwnd,
+                attribute,
+                (&raw const colorref).cast(),
+                size_of_val(&colorref) as u32,
+            )
+        };
+    }
 }
 
 pub fn autostart(path: &Path, installed: bool) -> Result<AutoLaunch> {
