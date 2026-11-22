@@ -1,4 +1,4 @@
-use std::{ffi::OsStr, path::Path, thread};
+use std::{ffi::OsStr, mem::size_of_val, path::Path, thread};
 
 use anyhow::{Context, Result};
 use auto_launch::AutoLaunch;
@@ -9,7 +9,10 @@ use windows::{
         Foundation::{
             CloseHandle, ERROR_ALREADY_EXISTS, ERROR_SUCCESS, GetLastError, HANDLE, HWND, SetLastError, WAIT_OBJECT_0,
         },
-        System::Threading::{CreateEventW, CreateMutexW, INFINITE, SetEvent, WaitForSingleObject},
+        System::{
+            Registry::{HKEY_CURRENT_USER, RRF_RT_REG_DWORD, RegGetValueW},
+            Threading::{CreateEventW, CreateMutexW, INFINITE, SetEvent, WaitForSingleObject},
+        },
         UI::WindowsAndMessaging::{IsIconic, SW_HIDE, SW_RESTORE, SW_SHOW, ShowWindow},
     },
     core::w,
@@ -28,6 +31,23 @@ pub enum InstallerKind {
 
 pub fn is_autostart() -> bool {
     std::env::args_os().any(|arg| arg == OsStr::new(AUTOSTART_ARG))
+}
+
+pub fn taskbar_uses_light_theme() -> bool {
+    let mut light = 0u32;
+    let mut bytes = size_of_val(&light) as u32;
+    let result = unsafe {
+        RegGetValueW(
+            HKEY_CURRENT_USER,
+            w!("Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize"),
+            w!("SystemUsesLightTheme"),
+            RRF_RT_REG_DWORD,
+            None,
+            Some((&raw mut light).cast()),
+            Some(&raw mut bytes),
+        )
+    };
+    result == ERROR_SUCCESS && light != 0
 }
 
 pub fn autostart(path: &Path, installed: bool) -> Result<AutoLaunch> {
