@@ -1,1 +1,0 @@
-{"default":{"identifier":"default","description":"Better Sonar main window permissions","local":true,"windows":["main"],"permissions":["core:default","autostart:default"]}}

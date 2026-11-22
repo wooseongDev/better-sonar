@@ -18,7 +18,7 @@ GG 이벤트 소켓 연결은 재사용한다. 인증 정보는 실행 중인 So
 
 ## 등록 및 반복 입력
 
-현재 의존성인 `tauri-plugin-global-shortcut 2.3.2`와 `global-hotkey 0.8.0`은 세 키를 서로 다른 `Code`와 `VK_VOLUME_*` 값으로 매핑한다. Windows 구현은 `RegisterHotKey`에 `MOD_NOREPEAT`를 사용하므로 Press 이벤트 자체는 반복되지 않는다.
+`global-hotkey 0.8.0`은 세 키를 서로 다른 `Code`와 `VK_VOLUME_*` 값으로 매핑한다. Windows 구현은 `RegisterHotKey`에 `MOD_NOREPEAT`를 사용하므로 Press 이벤트 자체는 반복되지 않는다.
 
 Better Sonar는 Down/Up의 Press 직후 한 번 실행하고, 키가 계속 눌려 있으면 350 ms 후 90 ms 간격으로 반복한다. Release 이벤트에서 반복을 중단한다. Mute는 길게 눌러도 한 번만 전환한다.
 
@@ -29,7 +29,7 @@ Better Sonar는 Down/Up의 Press 직후 한 번 실행하고, 키가 계속 눌�
 ## 실제 Windows 검증 절차
 
 1. SteelSeries GG에서 Sonar for Streamers를 활성화하고 헤드셋과 스피커를 Better Sonar에 저장한다.
-2. 터미널에서 `pnpm tauri dev`를 실행하고 `[media-key] ... 전역 등록 완료` 로그 세 개를 확인한다.
+2. 터미널에서 `cargo run --locked`를 실행하고 설정의 **Fn 미디어 키 액션**을 켠다.
 3. 앱 창을 닫아 트레이에 숨긴다.
 4. `Fn + F10`을 누르고 Sonar Master - Personal 음소거 상태가 전환되는지 확인한다.
 5. `Fn + F11/F12`를 짧게 누른 뒤 길게 눌러 단일 단계와 연속 단계 조절을 확인한다.

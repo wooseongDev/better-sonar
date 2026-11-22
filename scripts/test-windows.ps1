@@ -11,8 +11,6 @@ param(
 
   [string]$WorkRoot = '',
 
-  [switch]$SkipInstall,
-
   [switch]$Clean
 )
 
@@ -144,13 +142,9 @@ function Write-WindowsDriver {
     [Parameter(Mandatory = $true)][string]$Path,
     [Parameter(Mandatory = $true)][string]$ProjectRoot,
     [Parameter(Mandatory = $true)][string]$VsDevCmd,
-    [Parameter(Mandatory = $true)][string]$Pnpm,
     [Parameter(Mandatory = $true)][string]$Cargo,
     [Parameter(Mandatory = $true)][string]$Rustc,
-    [Parameter(Mandatory = $true)][string]$Git,
-    [Parameter(Mandatory = $true)][string]$Node,
-    [Parameter(Mandatory = $true)][string]$Mode,
-    [switch]$SkipInstall
+    [Parameter(Mandatory = $true)][string]$Mode
   )
 
   $lines = [Collections.Generic.List[string]]::new()
@@ -159,29 +153,13 @@ function Write-WindowsDriver {
   $lines.Add('setlocal EnableExtensions')
   $lines.Add("call `"$VsDevCmd`" -no_logo -arch=x64 -host_arch=x64")
   $lines.Add('if errorlevel 1 exit /b %errorlevel%')
-  $lines.Add('set "SHELL=%COMSPEC%"')
-  $lines.Add('set "npm_config_script_shell=%COMSPEC%"')
-  $lines.Add('set "npm_config_manage_package_manager_versions=false"')
   $lines.Add("cd /d `"$ProjectRoot`"")
-  $lines.Add("if not exist .git `"$Git`" init --quiet")
-  $lines.Add('if errorlevel 1 exit /b %errorlevel%')
   $lines.Add("`"$Rustc`" -vV | findstr /R /C:`"host: .*pc-windows-msvc`" >nul")
   $lines.Add('if errorlevel 1 (echo [windows-test] Rust MSVC host toolchain is required. & exit /b 1)')
-  $lines.Add("`"$Node`" --version")
+  $lines.Add('echo [windows-test] Running Rust checks...')
+  $lines.Add("`"$Cargo`" fmt --all --check")
   $lines.Add('if errorlevel 1 exit /b %errorlevel%')
-  $lines.Add("call `"$Pnpm`" --version")
-  $lines.Add('if errorlevel 1 exit /b %errorlevel%')
-
-  if (-not $SkipInstall) {
-    $lines.Add('echo [windows-test] Installing frontend dependencies...')
-    $lines.Add("call `"$Pnpm`" install --frozen-lockfile")
-    $lines.Add('if errorlevel 1 exit /b %errorlevel%')
-  }
-
-  $lines.Add('echo [windows-test] Running quality checks...')
-  $lines.Add("call `"$Pnpm`" check:quality")
-  $lines.Add('if errorlevel 1 exit /b %errorlevel%')
-  $lines.Add("call `"$Pnpm`" build")
+  $lines.Add("`"$Cargo`" clippy --locked --workspace --all-targets -- -D warnings")
   $lines.Add('if errorlevel 1 exit /b %errorlevel%')
   $lines.Add("`"$Cargo`" test --workspace --locked")
   $lines.Add('if errorlevel 1 exit /b %errorlevel%')
@@ -189,15 +167,15 @@ function Write-WindowsDriver {
   switch ($Mode) {
     'Check' {
       $lines.Add('echo [windows-test] Building the Windows debug application...')
-      $lines.Add("call `"$Pnpm`" tauri build --debug --no-bundle -- --locked")
+      $lines.Add("`"$Cargo`" build --locked -p better-sonar")
     }
     'Run' {
-      $lines.Add('echo [windows-test] Starting the Windows Tauri development application...')
-      $lines.Add("call `"$Pnpm`" tauri dev --no-watch -- --locked")
+      $lines.Add('echo [windows-test] Starting the Windows GPUI application...')
+      $lines.Add("`"$Cargo`" run --locked -p better-sonar")
     }
     'Bundle' {
       $lines.Add('echo [windows-test] Building NSIS and MSI release bundles...')
-      $lines.Add("call `"$Pnpm`" tauri build --bundles nsis,msi -- --locked")
+      $lines.Add("powershell.exe -NoProfile -ExecutionPolicy Bypass -File packaging\windows\build.ps1")
     }
   }
   $lines.Add('if errorlevel 1 exit /b %errorlevel%')
@@ -256,9 +234,7 @@ function Sync-SourceTree {
     '/NDL',
     '/XD',
     '.git',
-    'node_modules',
     'target',
-    'dist',
     'artifacts',
     '/XF',
     '*.log'
@@ -272,8 +248,8 @@ function Sync-SourceTree {
 
 function Invoke-Main {
   $resolvedSource = (Resolve-Path -LiteralPath $SourceRoot).ProviderPath
-  if (-not (Test-Path -LiteralPath (Join-Path $resolvedSource 'package.json') -PathType Leaf) -or
-      -not (Test-Path -LiteralPath (Join-Path $resolvedSource 'src-tauri\tauri.conf.json') -PathType Leaf)) {
+  if (-not (Test-Path -LiteralPath (Join-Path $resolvedSource 'Cargo.toml') -PathType Leaf) -or
+      -not (Test-Path -LiteralPath (Join-Path $resolvedSource 'better-sonar\Cargo.toml') -PathType Leaf)) {
     throw "Better Sonar 저장소를 확인할 수 없습니다: $resolvedSource"
   }
 
@@ -305,24 +281,11 @@ function Invoke-Main {
     $null = Get-RequiredCommandPath -Name 'link.exe' -InstallHint 'Visual Studio C++ Build Tools를 설치하세요.'
     $cargo = Get-RequiredCommandPath -Name 'cargo.exe' -InstallHint 'Windows용 rustup과 stable-msvc 도구체인을 설치하세요.'
     $rustc = Get-RequiredCommandPath -Name 'rustc.exe' -InstallHint 'Windows용 rustup과 stable-msvc 도구체인을 설치하세요.'
-    $git = Get-RequiredCommandPath -Name 'git.exe' -InstallHint 'Windows용 Git을 설치하세요.'
-    $node = Get-RequiredCommandPath -Name 'node.exe' -InstallHint 'Windows에 Node.js를 설치하세요.'
-    $pnpm = Get-RequiredCommandPath -Name 'pnpm.cmd' -InstallHint 'Windows에서 corepack enable 또는 pnpm 설치를 실행하세요.'
 
     $rustcResult = Invoke-NativeCapture -FilePath $rustc -Arguments @('-vV')
     $rustcVerbose = $rustcResult.StdOut
     if ($rustcResult.ExitCode -ne 0 -or $rustcVerbose -notmatch 'host: .*pc-windows-msvc') {
       throw "Rust MSVC 호스트 도구체인이 필요합니다.`n$rustcVerbose"
-    }
-    $nodeResult = Invoke-NativeCapture -FilePath $node -Arguments @('--version')
-    $nodeVersion = $nodeResult.StdOut.Trim()
-    if ($nodeResult.ExitCode -ne 0 -or $nodeVersion -notmatch '^v(?<major>\d+)') {
-      throw "Node.js 버전을 확인하지 못했습니다: $nodeVersion"
-    }
-    $requiredNodeText = (Get-Content -LiteralPath (Join-Path $resolvedSource '.nvmrc') -Raw).Trim()
-    $requiredNode = [int]($requiredNodeText.TrimStart('v'))
-    if ([int]$Matches.major -lt $requiredNode) {
-      throw "Node.js $requiredNode 이상이 필요하지만 현재 버전은 $nodeVersion 입니다."
     }
     $cargoResult = Invoke-NativeCapture -FilePath $cargo -Arguments @('--version')
     $cargoVersion = ([string]$cargoResult.StdOut).Trim()
@@ -330,17 +293,11 @@ function Invoke-Main {
       throw "Cargo 버전을 확인하지 못했습니다: $($cargoResult.StdErr)"
     }
     Write-Host "[windows-test] Rust: $cargoVersion"
-    Write-Host "[windows-test] Node: $nodeVersion"
-    Write-Host "[windows-test] pnpm: $pnpm"
 
     Write-Step "WSL 소스를 Windows 작업 폴더로 동기화: $projectRoot"
     Sync-SourceTree -Robocopy $robocopy -From $resolvedSource -To $projectRoot
-    if ($SkipInstall -and -not (Test-Path -LiteralPath (Join-Path $projectRoot 'node_modules') -PathType Container)) {
-      throw '--skip-install을 사용하려면 Windows 작업 폴더에 기존 node_modules가 있어야 합니다.'
-    }
     $driverPath = Join-Path $resolvedWorkRoot ("run-{0}.cmd" -f $Mode.ToLowerInvariant())
-    Write-WindowsDriver -Path $driverPath -ProjectRoot $projectRoot -VsDevCmd $vsDevCmd -Pnpm $pnpm `
-      -Cargo $cargo -Rustc $rustc -Git $git -Node $node -Mode $Mode -SkipInstall:$SkipInstall
+    Write-WindowsDriver -Path $driverPath -ProjectRoot $projectRoot -VsDevCmd $vsDevCmd -Cargo $cargo -Rustc $rustc -Mode $Mode
     [IO.File]::WriteAllText($ResultPath, $driverPath, [Text.UTF8Encoding]::new($false))
 
     Write-Step 'Windows 네이티브 테스트 드라이버 준비 완료'

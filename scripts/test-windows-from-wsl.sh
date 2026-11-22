@@ -11,12 +11,11 @@ WSL에서 Better Sonar의 Windows 네이티브 검사와 실행을 시작합니�
 
 모드:
   --check          품질 검사, 테스트, 디버그 앱 빌드(기본값)
-  --run            공통 검사 후 Windows Tauri 개발 앱 실행
+  --run            공통 검사 후 Windows GPUI 앱 실행
   --bundle         공통 검사 후 NSIS/MSI 릴리스 번들 생성
 
 옵션:
   --work-root PATH Windows 테스트 작업 폴더. Windows 또는 WSL 경로 사용 가능
-  --skip-install   pnpm install 생략
   --clean          보호된 테스트 작업 폴더를 지운 뒤 다시 동기화
   -h, --help       도움말 표시
 EOF
@@ -29,7 +28,6 @@ fail() {
 
 mode='Check'
 work_root=''
-skip_install=false
 clean=false
 
 while (($# > 0)); do
@@ -47,9 +45,6 @@ while (($# > 0)); do
       (($# >= 2)) || fail '--work-root 뒤에 경로를 지정해야 합니다.'
       work_root=$2
       shift
-      ;;
-    --skip-install)
-      skip_install=true
       ;;
     --clean)
       clean=true
@@ -74,7 +69,7 @@ command -v powershell.exe >/dev/null 2>&1 || fail 'powershell.exe를 찾을 수 
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 repo_root=$(cd -- "$script_dir/.." && pwd -P)
 power_shell_script="$script_dir/test-windows.ps1"
-[[ -f $repo_root/package.json && -f $repo_root/src-tauri/tauri.conf.json ]] || fail 'Better Sonar 저장소 루트를 확인하지 못했습니다.'
+[[ -f $repo_root/Cargo.toml && -f $repo_root/better-sonar/Cargo.toml ]] || fail 'Better Sonar 저장소 루트를 확인하지 못했습니다.'
 [[ -f $power_shell_script ]] || fail "Windows 실행 스크립트가 없습니다: $power_shell_script"
 
 source_windows=$(wslpath -w "$repo_root")
@@ -101,7 +96,6 @@ trap 'rm -f -- "$result_file"' EXIT
 result_windows=$(wslpath -w "$result_file")
 arguments+=(-ResultPath "$result_windows")
 [[ -n $work_root ]] && arguments+=(-WorkRoot "$work_root")
-[[ $skip_install == true ]] && arguments+=(-SkipInstall)
 [[ $clean == true ]] && arguments+=(-Clean)
 
 powershell.exe "${arguments[@]}"

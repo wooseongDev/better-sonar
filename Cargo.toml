@@ -1,5 +1,6 @@
 [workspace]
-members = ["sonar-probe", "src-tauri"]
+members = ["sonar-probe", "better-sonar", "packaging/windows/sign"]
+default-members = ["better-sonar"]
 resolver = "2"
 
 [workspace.lints.clippy]

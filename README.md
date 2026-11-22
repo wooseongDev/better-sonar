@@ -1,6 +1,6 @@
 # Better Sonar
 
-Better Sonar는 SteelSeries GG Sonar를 더 간편하게 사용할 수 있도록 도와주는 비공식 Windows 응용프로그램입니다.
+Better Sonar는 SteelSeries GG Sonar를 더 간편하게 사용할 수 있도록 도와주는 비공식 Windows 앱입니다. GPUI로 화면을 그립니다.
 
 ## 주요 기능
 
@@ -43,23 +43,22 @@ v0.0.3부터 앱이 시작된 뒤 새 버전을 자동으로 확인합니다. �
 
 필수 도구:
 
-- Node.js 24 이상 (`nvm use`로 프로젝트 권장 버전 적용)
-- pnpm 11.9.0
-- Rust stable
-- Tauri 2의 [Windows 사전 요구 사항](https://v2.tauri.app/start/prerequisites/)
+- Windows x64와 Rust stable MSVC 도구체인
+- Visual Studio Build Tools의 C++ 데스크톱 개발 워크로드와 Windows SDK
+- 배포용 설치 파일을 만들 때 NSIS와 WiX 3
 
 ```bash
-pnpm install
-pnpm build
-pnpm check:quality
-cargo test -p better-sonar --lib
-cargo test -p sonar-probe
-pnpm tauri build
+cargo run --locked
+cargo fmt --all --check
+cargo clippy --locked --workspace --all-targets -- -D warnings
+cargo test --locked --workspace
 ```
 
-`pnpm install`은 Lefthook의 `pre-commit` 훅을 설치합니다. 전체 품질 검사는 `pnpm check:quality`, 프런트엔드는 `pnpm check:frontend`, Rust는 `pnpm check:rust`로 실행할 수 있습니다.
+PowerShell 7에서 `./scripts/smoke-windows.ps1`로 트레이 시작과 창 열기, 숨기기, 다시 열기를 확인할 수 있습니다. 설치 파일은 `./packaging/windows/build.ps1`로 만듭니다.
 
-WSL에서 Windows 네이티브 MSVC 검사와 Tauri 빌드를 한 번에 실행할 수 있습니다.
+개발 빌드의 설정은 `%APPDATA%\dev.wooseong.better-sonar.dev`에 저장합니다. 설치본은 기존 `%APPDATA%\dev.wooseong.better-sonar`의 설정을 사용합니다.
+
+WSL에서 Windows 네이티브 MSVC 검사와 GPUI 빌드를 한 번에 실행할 수 있습니다.
 
 ```bash
 ./scripts/test-windows-from-wsl.sh
@@ -85,10 +84,10 @@ GitHub Releases 자동 업데이트의 키 관리, 릴리스 및 실제 2버전 
 
 ## 구조
 
-- `src/` — React UI
-- `src-tauri/` — Tauri 앱과 Sonar 연동
-- `sonar-probe/` — 실제 Sonar API 검증 도구
-- `docs/SONAR_API.md` — 앱이 의존하는 비공식 로컬 API의 호환성 메모
+- `better-sonar/`의 GPUI 화면, Windows 통합, Sonar 연동
+- `packaging/windows/`의 설치 프로그램과 릴리스 도구
+- `sonar-probe/`의 실제 Sonar API 검증 도구
+- `docs/SONAR_API.md`의 비공개 로컬 API 호환성 메모
 
 ## 알려진 제한 사항
 

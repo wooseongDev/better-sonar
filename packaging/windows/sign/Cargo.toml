@@ -1,0 +1,16 @@
+[package]
+name = "better-sonar-sign"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow = "1"
+base64 = "0.22"
+minisign = "0.9"
+minisign-verify = "0.2"
+semver = "1"
