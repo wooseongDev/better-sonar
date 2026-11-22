@@ -183,39 +183,46 @@ impl Render for MainView {
                 .bg(theme.group_box)
                 .w_full()
         };
+        let stream_device = snapshot
+            .stream_device_name
+            .as_deref()
+            .or(snapshot.stream_device_id.as_deref().filter(|id| !id.is_empty()))
+            .unwrap_or("장치 확인 불가");
 
-        let mut devices = panel()
-            .child(title("Personal Mix"))
-            .child(
-                div().text_xl().font_semibold().child(
-                    snapshot
-                        .personal_device_name
-                        .clone()
-                        .unwrap_or_else(|| "장치 확인 불가".into()),
-                ),
-            )
-            .child(hint(snapshot.message.clone().into()))
-            .child(
-                div()
-                    .flex()
-                    .gap_2()
-                    .child(
-                        Button::new("toggle")
-                            .primary()
-                            .label(toggle_label)
-                            .disabled(!can_toggle)
-                            .on_click(cx.listener(|view, _, _, _| {
-                                let _ = view.events.try_send(Event::Sonar(Action::Toggle));
-                            })),
-                    )
-                    .child(
-                        Button::new("refresh")
-                            .label("새로고침")
-                            .on_click(cx.listener(|view, _, _, _| {
-                                let _ = view.events.try_send(Event::Sonar(Action::Refresh));
-                            })),
+        let mut devices =
+            panel()
+                .child(title("Personal Mix"))
+                .child(
+                    div().text_xl().font_semibold().child(
+                        snapshot
+                            .personal_device_name
+                            .clone()
+                            .unwrap_or_else(|| "장치 확인 불가".into()),
                     ),
-            );
+                )
+                .child(hint(snapshot.message.clone().into()))
+                .when(connected, |panel| {
+                    panel.child(hint(format!("Stream Mix 출력: {stream_device}").into()))
+                })
+                .child(
+                    div()
+                        .flex()
+                        .gap_2()
+                        .child(
+                            Button::new("toggle")
+                                .primary()
+                                .label(toggle_label)
+                                .disabled(!can_toggle)
+                                .on_click(cx.listener(|view, _, _, _| {
+                                    let _ = view.events.try_send(Event::Sonar(Action::Toggle));
+                                })),
+                        )
+                        .child(Button::new("refresh").label("Sonar 연결 확인").on_click(cx.listener(
+                            |view, _, _, _| {
+                                let _ = view.events.try_send(Event::Sonar(Action::Refresh));
+                            },
+                        ))),
+                );
         if connected {
             for (key, label, id) in [
                 ("use-headset", "헤드셋 선택", draft.headset_device_id.clone()),

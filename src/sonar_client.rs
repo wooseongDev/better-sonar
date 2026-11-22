@@ -94,6 +94,7 @@ pub struct SonarState {
     pub input_devices: Vec<AudioDevice>,
     pub personal_device_id: String,
     pub stream_device_id: String,
+    pub stream_device_name: Option<String>,
     pub mic_device_id: String,
 }
 
@@ -266,6 +267,10 @@ impl SonarClient {
             input_devices,
             personal_device_id: personal.device_id.clone(),
             stream_device_id: stream.device_id.clone(),
+            stream_device_name: raw_devices
+                .iter()
+                .find(|device| device.id == stream.device_id)
+                .map(|device| device.friendly_name.clone()),
             mic_device_id: mic.device_id.clone(),
         })
     }
@@ -492,10 +497,10 @@ mod tests {
                 "isVad": false
             },
             {
-                "friendlyName": "Sonar Gaming",
-                "id": "vad",
+                "friendlyName": "Sonar Stream",
+                "id": STREAM_ID,
                 "dataFlow": "render",
-                "role": "game",
+                "role": "stream",
                 "channels": 8,
                 "state": "active",
                 "isVad": true
@@ -665,6 +670,7 @@ mod tests {
         assert_eq!(state.mode, "stream");
         assert_eq!(state.personal_device_id, HEADSET_ID);
         assert_eq!(state.stream_device_id, STREAM_ID);
+        assert_eq!(state.stream_device_name.as_deref(), Some("Sonar Stream"));
         assert_eq!(state.mic_device_id, MIC_ID);
         assert_eq!(state.devices.len(), 3);
         assert_eq!(state.input_devices.len(), 2);
