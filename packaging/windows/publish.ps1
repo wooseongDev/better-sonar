@@ -2,8 +2,8 @@
 param([Parameter(Mandatory)][string]$Tag, [string]$Directory = 'target/release/bundle')
 
 $ErrorActionPreference = 'Stop'
-$version = (Get-Content better-sonar/Cargo.toml | Select-String '^version = "(\d+\.\d+\.\d+)"$').Matches[0].Groups[1].Value
-if ($Tag -cne "v$version") { throw "Tag '$Tag' must match better-sonar/Cargo.toml version '$version'" }
+$version = (Get-Content Cargo.toml | Select-String '^version = "(\d+\.\d+\.\d+)"$').Matches[0].Groups[1].Value
+if ($Tag -cne "v$version") { throw "Tag '$Tag' must match Cargo.toml version '$version'" }
 $repo = $env:GITHUB_REPOSITORY
 if (-not $repo) { throw 'GITHUB_REPOSITORY is required' }
 $nsis = Get-Item -LiteralPath (Join-Path $Directory "Better.Sonar_${version}_x64-setup.exe")

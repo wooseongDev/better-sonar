@@ -28,7 +28,7 @@ function Find-Tool([string]$Name, [string[]]$Directories) {
 
 Push-Location $repo
 try {
-    $version = (Get-Content better-sonar/Cargo.toml | Select-String '^version = "(\d+\.\d+\.\d+)"$').Matches[0].Groups[1].Value
+    $version = (Get-Content Cargo.toml | Select-String '^version = "(\d+\.\d+\.\d+)"$').Matches[0].Groups[1].Value
     if (-not $Binary) {
         Invoke-Checked cargo @('build', '--release', '--locked', '-p', 'better-sonar')
         $Binary = 'target/release/better-sonar.exe'

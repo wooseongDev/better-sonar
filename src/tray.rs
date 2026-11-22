@@ -174,7 +174,7 @@ pub struct Tray {
 impl Tray {
     pub fn new() -> Result<Self> {
         let signature = MenuSignature::from_snapshot(None);
-        let icon = image::load_from_memory(include_bytes!("../../assets/icon.png"))?
+        let icon = image::load_from_memory(include_bytes!("../assets/icon.png"))?
             .resize(32, 32, image::imageops::FilterType::Lanczos3)
             .into_rgba8();
         let (width, height) = icon.dimensions();

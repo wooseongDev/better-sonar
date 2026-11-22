@@ -11,7 +11,7 @@ if (-not $Isolated -and $env:GITHUB_ACTIONS -ne 'true') {
 
 $uninstallKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Better Sonar'
 $machineUninstall = 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall'
-$version = (Get-Content better-sonar/Cargo.toml | Select-String '^version = "(\d+\.\d+\.\d+)"$').Matches[0].Groups[1].Value
+$version = (Get-Content Cargo.toml | Select-String '^version = "(\d+\.\d+\.\d+)"$').Matches[0].Groups[1].Value
 $Directory = (Resolve-Path -LiteralPath $Directory).Path
 $legacy = 'https://github.com/wooseongDev/better-sonar/releases/download/v0.0.6'
 $config = Join-Path ([Environment]::GetFolderPath('ApplicationData')) 'dev.wooseong.better-sonar/settings.json'
