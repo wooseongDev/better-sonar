@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="*" Name="Better Sonar" Language="1042" Codepage="949"
+           Version="$(var.Version)" Manufacturer="wooseong"
+           UpgradeCode="{CFCC0653-D654-55D1-B502-F37C4A5F8523}">
+    <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" Platform="x64"/>
+    <MajorUpgrade Schedule="afterInstallInitialize" DowngradeErrorMessage="A newer version of Better Sonar is installed."/>
+    <MediaTemplate EmbedCab="yes"/>
+    <Icon Id="AppIcon" SourceFile="$(var.Icon)"/>
+    <Property Id="ARPPRODUCTICON" Value="AppIcon"/>
+    <Property Id="AUTOLAUNCHAPP" Secure="yes"/>
+    <Property Id="LAUNCHAPPARGS" Secure="yes"/>
+    <Property Id="INSTALLDIR" Secure="yes">
+      <RegistrySearch Id="PreviousInstallDir" Root="HKCU" Key="Software\wooseong\Better Sonar"
+                      Name="InstallDir" Type="raw" Win64="yes"/>
+    </Property>
+    <SetProperty Id="ARPINSTALLLOCATION" Value="[INSTALLDIR]" After="CostFinalize"/>
+
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFiles64Folder">
+        <Directory Id="INSTALLDIR" Name="Better Sonar">
+          <Component Id="App" Guid="*" Win64="yes">
+            <File Id="BetterSonar" Source="$(var.Binary)" KeyPath="yes">
+              <Shortcut Id="StartMenuShortcut" Directory="ProgramMenuFolder" Name="Better Sonar"
+                        WorkingDirectory="INSTALLDIR" Advertise="yes"/>
+            </File>
+          </Component>
+          <Component Id="InstallerKind" Guid="*" Win64="yes">
+            <File Source="msi/installer-kind" KeyPath="yes"/>
+          </Component>
+          <Component Id="InstallLocation" Guid="*" Win64="yes">
+            <RegistryValue Root="HKCU" Key="Software\wooseong\Better Sonar" Name="InstallDir"
+                           Value="[INSTALLDIR]" Type="string" KeyPath="yes"/>
+          </Component>
+        </Directory>
+      </Directory>
+      <Directory Id="ProgramMenuFolder"/>
+    </Directory>
+    <Feature Id="Main" Title="Better Sonar" Level="1">
+      <ComponentRef Id="App"/>
+      <ComponentRef Id="InstallerKind"/>
+      <ComponentRef Id="InstallLocation"/>
+    </Feature>
+
+    <CustomAction Id="LaunchBetterSonar" FileKey="BetterSonar" ExeCommand="[LAUNCHAPPARGS]" Return="asyncNoWait"/>
+    <InstallExecuteSequence>
+      <Custom Action="LaunchBetterSonar" After="InstallFinalize">AUTOLAUNCHAPP AND NOT (REMOVE="ALL")</Custom>
+    </InstallExecuteSequence>
+  </Product>
+</Wix>
