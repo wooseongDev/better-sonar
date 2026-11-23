@@ -7,7 +7,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$repo = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
+$repo = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 
 function Invoke-Checked([string]$Program, [string[]]$Arguments) {
     & $Program @Arguments
@@ -46,7 +46,7 @@ try {
     $setup = Join-Path $output "Better.Sonar_${version}_x64-setup.exe"
     $msi = Join-Path $output "Better.Sonar_${version}_x64_ko-KR.msi"
 
-    Push-Location $PSScriptRoot
+    Push-Location (Join-Path $repo 'packaging/windows')
     try {
         Invoke-Checked $nsis @("/DVERSION=$version", "/DOUTPUT=$setup", "/DBINARY=$Binary", "/DICON=$icon", 'installer.nsi')
         $object = Join-Path $output 'installer.wixobj'
