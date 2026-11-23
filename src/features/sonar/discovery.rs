@@ -8,7 +8,7 @@ use std::{
 use reqwest::Client;
 use serde::Deserialize;
 
-use crate::sonar_client::SonarError;
+use super::client::SonarError;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]

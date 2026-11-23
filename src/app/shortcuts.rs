@@ -13,7 +13,10 @@ use global_hotkey::{
     hotkey::{Code, HotKey as Shortcut},
 };
 
-use crate::{app::Event, sonar_client::PersonalVolumeAction, state::AppRuntime};
+use crate::features::sonar::{AppRuntime, PersonalVolumeAction};
+
+use super::Event;
+
 fn parse_user(value: &str) -> Result<Shortcut, String> {
     let shortcut = Shortcut::from_str(value).map_err(|error| format!("단축키 형식이 올바르지 않습니다: {error}"))?;
     if is_media_key(shortcut.key) {

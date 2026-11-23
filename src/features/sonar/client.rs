@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
 
-use crate::{discovery::discover_sonar, models::AudioDevice};
+use super::{AudioDevice, discovery::discover_sonar};
 
 #[cfg(any(windows, test))]
 const MASTER_VOLUME_STEP: f32 = 0.05;
@@ -133,7 +133,7 @@ impl RedirectionTarget {
 pub struct SonarClient {
     http: Client,
     #[cfg(all(windows, not(test)))]
-    gg_shortcuts: crate::gg_shortcuts::GgShortcutClient,
+    gg_shortcuts: super::gg_shortcuts::GgShortcutClient,
     #[cfg(test)]
     fixed_base: Option<String>,
 }
@@ -143,7 +143,7 @@ impl SonarClient {
         Ok(Self {
             http: Client::builder().timeout(Duration::from_secs(3)).build()?,
             #[cfg(all(windows, not(test)))]
-            gg_shortcuts: crate::gg_shortcuts::GgShortcutClient::new(),
+            gg_shortcuts: super::gg_shortcuts::GgShortcutClient::new(),
             #[cfg(test)]
             fixed_base: None,
         })
@@ -165,7 +165,7 @@ impl SonarClient {
                 .build()
                 .expect("테스트 HTTP 클라이언트를 생성해야 합니다"),
             #[cfg(all(windows, not(test)))]
-            gg_shortcuts: crate::gg_shortcuts::GgShortcutClient::new(),
+            gg_shortcuts: super::gg_shortcuts::GgShortcutClient::new(),
             fixed_base: Some(base),
         }
     }

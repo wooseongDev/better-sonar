@@ -4,7 +4,7 @@ use tray_icon::{
     menu::{CheckMenuItem, IsMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu},
 };
 
-use crate::{app::Action, models::AppSnapshot};
+use crate::features::sonar::{AppSnapshot, AudioDevice, ConnectionStatus, SonarAction};
 const PERSONAL_PREFIX: &str = "personal-device:";
 const STREAM_PREFIX: &str = "stream-device:";
 const MIC_PREFIX: &str = "mic-device:";
@@ -48,12 +48,12 @@ impl MenuSignature {
             .unwrap_or("헤드셋 ↔ 스피커 전환")
             .into();
         let can_toggle = snapshot.is_some_and(|value| {
-            value.status == crate::models::ConnectionStatus::Connected
+            value.status == ConnectionStatus::Connected
                 && value.settings.headset_device_id.is_some()
                 && value.settings.speaker_device_id.is_some()
         });
-        let connected = snapshot.is_some_and(|value| value.status == crate::models::ConnectionStatus::Connected);
-        let menu_devices = |devices: &[crate::models::AudioDevice], current_device_id: Option<&str>| {
+        let connected = snapshot.is_some_and(|value| value.status == ConnectionStatus::Connected);
+        let menu_devices = |devices: &[AudioDevice], current_device_id: Option<&str>| {
             devices
                 .iter()
                 .filter(|device| device.state == "active")
@@ -90,22 +90,22 @@ impl MenuSignature {
 pub enum TrayAction {
     Show,
     Quit,
-    Sonar(Action),
+    Sonar(SonarAction),
 }
 
 pub fn menu_action(id: &str) -> Option<TrayAction> {
     match id {
         "show" => return Some(TrayAction::Show),
         "quit" => return Some(TrayAction::Quit),
-        "toggle" => return Some(TrayAction::Sonar(Action::Toggle)),
+        "toggle" => return Some(TrayAction::Sonar(SonarAction::Toggle)),
         _ => {}
     }
     let (prefix, encoded) = id.split_once(':')?;
     let device = urlencoding::decode(encoded).ok()?.into_owned();
     let action = match prefix {
-        "personal-device" => Action::Personal(device),
-        "stream-device" => Action::Stream(device),
-        "mic-device" => Action::Mic(device),
+        "personal-device" => SonarAction::Personal(device),
+        "stream-device" => SonarAction::Stream(device),
+        "mic-device" => SonarAction::Mic(device),
         _ => return None,
     };
     Some(TrayAction::Sonar(action))
@@ -174,9 +174,9 @@ pub struct Tray {
 
 fn tray_icon(light_taskbar: bool) -> Result<Icon> {
     let png = if light_taskbar {
-        include_bytes!("../assets/tray-light.png").as_slice()
+        include_bytes!("../../assets/tray-light.png").as_slice()
     } else {
-        include_bytes!("../assets/tray-dark.png").as_slice()
+        include_bytes!("../../assets/tray-dark.png").as_slice()
     };
     let rgba = image::load_from_memory(png)?.into_rgba8();
     let (width, height) = rgba.dimensions();
@@ -219,9 +219,9 @@ impl Tray {
 }
 #[cfg(test)]
 mod tests {
-    use crate::models::{AppSettings, AppSnapshot, AudioDevice, ConnectionStatus};
+    use crate::features::settings::AppSettings;
 
-    use super::MenuSignature;
+    use super::{AppSnapshot, AudioDevice, ConnectionStatus, MenuSignature};
 
     fn snapshot() -> AppSnapshot {
         AppSnapshot {
