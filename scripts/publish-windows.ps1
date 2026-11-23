@@ -2,7 +2,8 @@
 param([Parameter(Mandatory)][string]$Tag, [string]$Directory = 'target/release/bundle')
 
 $ErrorActionPreference = 'Stop'
-$version = (Get-Content Cargo.toml | Select-String '^version = "(\d+\.\d+\.\d+)"$').Matches[0].Groups[1].Value
+$repoRoot = Split-Path -Parent $PSScriptRoot
+$version = (Get-Content -LiteralPath (Join-Path $repoRoot 'Cargo.toml') | Select-String '^version = "(\d+\.\d+\.\d+)"$').Matches[0].Groups[1].Value
 if ($Tag -cne "v$version") { throw "Tag '$Tag' must match Cargo.toml version '$version'" }
 $repo = $env:GITHUB_REPOSITORY
 if (-not $repo) { throw 'GITHUB_REPOSITORY is required' }
@@ -12,7 +13,7 @@ $notesJson = gh api --method POST "repos/$repo/releases/generate-notes" -f "tag_
 if ($LASTEXITCODE -ne 0) { throw 'Could not generate release notes' }
 $notes = ($notesJson | ConvertFrom-Json).body
 
-cargo run --locked -p better-sonar-sign -- packaging/windows/updater.pub $version $nsis.FullName $msi.FullName
+cargo run --locked --manifest-path (Join-Path $repoRoot 'Cargo.toml') -p better-sonar-sign -- (Join-Path $PSScriptRoot 'windows/updater.pub') $version $nsis.FullName $msi.FullName
 if ($LASTEXITCODE -ne 0) { throw 'Could not sign the installers' }
 $prefix = "https://github.com/$repo/releases/download/$Tag"
 $nsisAsset = @{ url = "$prefix/$($nsis.Name)"; signature = (Get-Content "$($nsis.FullName).sig" -Raw).Trim() }
