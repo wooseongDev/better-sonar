@@ -7,11 +7,11 @@ use reqwest::{Client, Url};
 use semver::Version;
 use serde::Deserialize;
 
-use crate::{app::Event, windows::InstallerKind};
+use crate::windows::InstallerKind;
 
 const FEED: &str = "https://github.com/wooseongDev/better-sonar/releases/latest/download/latest.json";
 const ASSET_PREFIX: &str = "https://github.com/wooseongDev/better-sonar/releases/download/";
-const PUBLIC_KEY: &str = include_str!("../packaging/windows/updater.pub");
+const PUBLIC_KEY: &str = include_str!("../../../packaging/windows/updater.pub");
 const MAX_INSTALLER: u64 = 256 * 1024 * 1024;
 
 impl InstallerKind {
@@ -91,7 +91,7 @@ impl Updater {
         select_update(manifest, self.installer, &Version::parse(env!("CARGO_PKG_VERSION"))?)
     }
 
-    pub async fn install(&self, expected: Version, events: &async_channel::Sender<Event>) -> Result<()> {
+    pub async fn install(&self, expected: Version, mut progress: impl FnMut(u64, Option<u64>)) -> Result<()> {
         let update = self.check().await?.context("설치할 업데이트가 없습니다")?;
         ensure!(
             update.version == expected,
@@ -110,12 +110,7 @@ impl Updater {
                 "설치 파일이 너무 큽니다"
             );
             data.extend_from_slice(&chunk);
-            let _ = events
-                .send(Event::UpdateProgress {
-                    downloaded: data.len() as u64,
-                    total,
-                })
-                .await;
+            progress(data.len() as u64, total);
         }
         let key = PublicKey::decode(&String::from_utf8(STANDARD.decode(PUBLIC_KEY.trim())?)?)?;
         let signature = Signature::decode(&String::from_utf8(STANDARD.decode(update.asset.signature)?)?)?;

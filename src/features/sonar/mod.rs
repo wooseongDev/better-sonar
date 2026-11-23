@@ -1,8 +1,25 @@
+mod client;
+mod device_panel;
+mod discovery;
+#[cfg(not(test))]
+mod gg_shortcuts;
+mod runtime;
+
+use std::{sync::Arc, time::Duration};
+
+use async_channel::Sender;
 use serde::{Deserialize, Serialize};
+use tokio::sync::mpsc;
+
+use crate::{app::Event, features::settings::AppSettings};
+
+pub(crate) use client::PersonalVolumeAction;
+pub(crate) use device_panel::device_panel;
+pub(crate) use runtime::AppRuntime;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub enum ConnectionStatus {
+pub(crate) enum ConnectionStatus {
     Connected,
     GgNotRunning,
     SonarDisabled,
@@ -14,68 +31,16 @@ pub enum ConnectionStatus {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct AudioDevice {
+pub(crate) struct AudioDevice {
     pub id: String,
     pub name: String,
     pub state: String,
     pub channels: u32,
 }
 
-#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum ThemePreference {
-    #[default]
-    System,
-    Light,
-    Dark,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct AppSettings {
-    pub headset_device_id: Option<String>,
-    pub speaker_device_id: Option<String>,
-    pub shortcut: String,
-    pub autostart: bool,
-    #[serde(default = "default_media_keys_enabled")]
-    pub media_keys_enabled: bool,
-    #[serde(default)]
-    pub theme: ThemePreference,
-}
-
-const fn default_media_keys_enabled() -> bool {
-    true
-}
-
-impl AppSettings {
-    pub fn has_missing_output(&self, devices: &[AudioDevice]) -> bool {
-        [&self.headset_device_id, &self.speaker_device_id]
-            .into_iter()
-            .flatten()
-            .any(|id| {
-                !devices
-                    .iter()
-                    .any(|device| &device.id == id && device.state == "active")
-            })
-    }
-}
-
-impl Default for AppSettings {
-    fn default() -> Self {
-        Self {
-            headset_device_id: None,
-            speaker_device_id: None,
-            shortcut: "Ctrl+Alt+F9".into(),
-            autostart: false,
-            media_keys_enabled: true,
-            theme: ThemePreference::System,
-        }
-    }
-}
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct AppSnapshot {
+pub(crate) struct AppSnapshot {
     pub status: ConnectionStatus,
     pub message: String,
     pub mode: Option<String>,
@@ -92,7 +57,7 @@ pub struct AppSnapshot {
 }
 
 impl AppSnapshot {
-    pub fn disconnected(status: ConnectionStatus, message: impl Into<String>, settings: AppSettings) -> Self {
+    fn disconnected(status: ConnectionStatus, message: impl Into<String>, settings: AppSettings) -> Self {
         Self {
             status,
             message: message.into(),
@@ -111,18 +76,64 @@ impl AppSnapshot {
     }
 }
 
-pub fn unix_millis() -> u64 {
+fn unix_millis() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as u64
 }
 
+pub(crate) enum SonarAction {
+    Refresh,
+    Toggle,
+    Personal(String),
+    Stream(String),
+    Mic(String),
+    Settings(AppSettings),
+}
+
+pub(crate) async fn run_sonar(
+    runtime: Arc<AppRuntime>,
+    mut actions: mpsc::UnboundedReceiver<SonarAction>,
+    events: Sender<Event>,
+) {
+    let mut refresh = tokio::time::interval(Duration::from_secs(2));
+    refresh.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    loop {
+        let action = tokio::select! {
+            _ = refresh.tick() => SonarAction::Refresh,
+            action = actions.recv() => match action {
+                Some(action) => action,
+                None => break,
+            }
+        };
+        let result = match action {
+            SonarAction::Refresh => Ok(runtime.refresh().await),
+            SonarAction::Toggle => runtime.toggle().await,
+            SonarAction::Personal(device) => runtime.set_output(&device).await,
+            SonarAction::Stream(device) => runtime.set_stream_output(&device).await,
+            SonarAction::Mic(device) => runtime.set_mic_input(&device).await,
+            SonarAction::Settings(settings) => Ok(runtime.apply_settings(settings).await),
+        };
+        let snapshot = match result {
+            Ok(snapshot) => snapshot,
+            Err(error) => {
+                let _ = events.send(Event::Notice(error)).await;
+                runtime.refresh().await
+            }
+        };
+        if events.send(Event::Snapshot(Box::new(snapshot))).await.is_err() {
+            break;
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::json;
 
-    use super::{AppSettings, ConnectionStatus, ThemePreference};
+    use super::ConnectionStatus;
+    use crate::features::settings::{AppSettings, ThemePreference};
 
     #[test]
     fn frontend_contract_uses_expected_json_field_and_status_names() {

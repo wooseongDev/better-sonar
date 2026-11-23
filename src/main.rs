@@ -1,18 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod app;
-mod discovery;
-#[cfg(not(test))]
-mod gg_shortcuts;
-mod models;
-mod settings;
-mod shortcuts;
-mod sonar_client;
-mod state;
-mod theme;
-mod tray;
-mod ui;
-mod updates;
+mod features;
+mod views;
 mod windows;
 
 fn main() -> anyhow::Result<()> {

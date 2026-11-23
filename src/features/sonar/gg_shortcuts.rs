@@ -8,7 +8,7 @@ use tokio_tungstenite::{
     Connector, MaybeTlsStream, WebSocketStream, connect_async_tls_with_config, tungstenite::Message,
 };
 
-use crate::sonar_client::{PersonalVolumeAction, SonarError};
+use super::client::{PersonalVolumeAction, SonarError};
 
 const SONAR_PROCESS_NAME: &str = "SteelSeriesSonar.exe";
 const PROCESS_QUERY_INFORMATION: u32 = 0x0400;
@@ -299,8 +299,7 @@ unsafe extern "system" {
 
 #[cfg(test)]
 mod tests {
-    use super::{environment_value, shortcut_id};
-    use crate::sonar_client::PersonalVolumeAction;
+    use super::{PersonalVolumeAction, environment_value, shortcut_id};
 
     #[test]
     fn maps_personal_master_actions_to_sonar_shortcuts() {

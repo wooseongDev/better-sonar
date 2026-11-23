@@ -2,12 +2,14 @@ use std::sync::Arc;
 
 use tokio::sync::{Mutex, RwLock};
 
-use crate::{
-    models::{AppSettings, AppSnapshot, ConnectionStatus, unix_millis},
-    sonar_client::{SonarClient, SonarError},
+use super::{
+    AppSnapshot, ConnectionStatus,
+    client::{SonarClient, SonarError},
+    unix_millis,
 };
+use crate::features::settings::AppSettings;
 
-pub struct AppRuntime {
+pub(crate) struct AppRuntime {
     client: SonarClient,
     settings: RwLock<AppSettings>,
     snapshot: RwLock<AppSnapshot>,
@@ -140,10 +142,7 @@ impl AppRuntime {
     }
 
     #[cfg(windows)]
-    pub async fn control_personal_volume(
-        &self,
-        action: crate::sonar_client::PersonalVolumeAction,
-    ) -> Result<(), String> {
+    pub async fn control_personal_volume(&self, action: super::PersonalVolumeAction) -> Result<(), String> {
         let _guard = self.operation.lock().await;
         self.client
             .control_personal_volume(action)
@@ -168,12 +167,7 @@ fn snapshot_from_error(error: SonarError, settings: AppSettings) -> AppSnapshot 
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        models::{AppSettings, ConnectionStatus},
-        sonar_client::SonarError,
-    };
-
-    use super::snapshot_from_error;
+    use super::{AppSettings, ConnectionStatus, SonarError, snapshot_from_error};
 
     #[test]
     fn discovery_errors_keep_their_user_facing_status() {

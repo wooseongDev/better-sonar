@@ -1,9 +1,19 @@
-use gpui::{App, Window, rgb};
-use gpui_component::{Theme, ThemeMode};
+use async_channel::Sender;
+use gpui::{App, Div, Window, div, prelude::*, rgb};
+use gpui_component::{
+    Theme, ThemeMode,
+    button::{Button, ButtonVariants},
+};
 
-use crate::{models::ThemePreference, windows};
+use crate::{
+    app::Event,
+    views::{panel, title},
+    windows,
+};
 
-pub fn apply(preference: ThemePreference, window: &mut Window, cx: &mut App) {
+use super::ThemePreference;
+
+pub(crate) fn apply(preference: ThemePreference, window: &mut Window, cx: &mut App) {
     let mode = match preference {
         ThemePreference::System => ThemeMode::from(window.appearance()),
         ThemePreference::Light => ThemeMode::Light,
@@ -95,3 +105,24 @@ const DARK: Palette = Palette {
     success: 0x283a2d,
     success_foreground: 0xaad1b0,
 };
+
+pub(crate) fn appearance_panel(current: ThemePreference, events: &Sender<Event>, cx: &App) -> Div {
+    panel(cx).child(title("테마")).child(
+        div().flex().flex_wrap().gap_2().children(
+            [
+                ("theme-system", "시스템 설정 따르기", ThemePreference::System),
+                ("theme-light", "라이트", ThemePreference::Light),
+                ("theme-dark", "다크", ThemePreference::Dark),
+            ]
+            .map(|(id, label, preference)| {
+                let events = events.clone();
+                Button::new(id)
+                    .when(current == preference, |button| button.primary())
+                    .label(label)
+                    .on_click(move |_, _, _| {
+                        let _ = events.try_send(Event::SetTheme(preference));
+                    })
+            }),
+        ),
+    )
+}

@@ -3,10 +3,64 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::models::AppSettings;
 use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
 
-pub fn settings_path(installed: bool) -> Result<PathBuf> {
+use crate::features::sonar::AudioDevice;
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum ThemePreference {
+    #[default]
+    System,
+    Light,
+    Dark,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct AppSettings {
+    pub headset_device_id: Option<String>,
+    pub speaker_device_id: Option<String>,
+    pub shortcut: String,
+    pub autostart: bool,
+    #[serde(default = "default_media_keys_enabled")]
+    pub media_keys_enabled: bool,
+    #[serde(default)]
+    pub theme: ThemePreference,
+}
+
+const fn default_media_keys_enabled() -> bool {
+    true
+}
+
+impl AppSettings {
+    pub(crate) fn has_missing_output(&self, devices: &[AudioDevice]) -> bool {
+        [&self.headset_device_id, &self.speaker_device_id]
+            .into_iter()
+            .flatten()
+            .any(|id| {
+                !devices
+                    .iter()
+                    .any(|device| &device.id == id && device.state == "active")
+            })
+    }
+}
+
+impl Default for AppSettings {
+    fn default() -> Self {
+        Self {
+            headset_device_id: None,
+            speaker_device_id: None,
+            shortcut: "Ctrl+Alt+F9".into(),
+            autostart: false,
+            media_keys_enabled: true,
+            theme: ThemePreference::System,
+        }
+    }
+}
+
+pub(crate) fn settings_path(installed: bool) -> Result<PathBuf> {
     let appdata = std::env::var_os("APPDATA").context("Windows 사용자 설정 폴더를 찾을 수 없습니다")?;
     let folder = if installed {
         "dev.wooseong.better-sonar"
@@ -16,14 +70,14 @@ pub fn settings_path(installed: bool) -> Result<PathBuf> {
     Ok(PathBuf::from(appdata).join(folder).join("settings.json"))
 }
 
-pub fn load(path: &Path) -> AppSettings {
+pub(crate) fn load(path: &Path) -> AppSettings {
     fs::read_to_string(path)
         .ok()
         .and_then(|raw| serde_json::from_str(&raw).ok())
         .unwrap_or_default()
 }
 
-pub fn save(path: &Path, settings: &AppSettings) -> Result<()> {
+pub(crate) fn save(path: &Path, settings: &AppSettings) -> Result<()> {
     let parent = path.parent().context("설정 폴더가 없습니다")?;
     fs::create_dir_all(parent).context("설정 폴더를 만들 수 없습니다")?;
     let mut file = tempfile::NamedTempFile::new_in(parent)?;
@@ -36,8 +90,7 @@ pub fn save(path: &Path, settings: &AppSettings) -> Result<()> {
 mod tests {
     use tempfile::tempdir;
 
-    use super::{load, save};
-    use crate::models::{AppSettings, ThemePreference};
+    use super::{AppSettings, ThemePreference, load, save};
 
     #[test]
     fn settings_round_trip_preserves_device_ids_shortcut_and_autostart() {
