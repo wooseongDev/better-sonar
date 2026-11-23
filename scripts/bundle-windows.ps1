@@ -3,11 +3,12 @@ param(
     [string]$OutputDirectory = 'target/release/bundle',
     [string]$Binary,
     [string]$NsisRoot = $env:BETTER_SONAR_NSIS_ROOT,
-    [string]$WixRoot = $env:BETTER_SONAR_WIX_ROOT
+    [string]$WixRoot = $env:BETTER_SONAR_WIX_ROOT,
+    [string]$Tag
 )
 
 $ErrorActionPreference = 'Stop'
-$repo = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
+$repo = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 
 function Invoke-Checked([string]$Program, [string[]]$Arguments) {
     & $Program @Arguments
@@ -29,6 +30,7 @@ function Find-Tool([string]$Name, [string[]]$Directories) {
 Push-Location $repo
 try {
     $version = (Get-Content Cargo.toml | Select-String '^version = "(\d+\.\d+\.\d+)"$').Matches[0].Groups[1].Value
+    if ($Tag -and $Tag -cne "v$version") { throw "Tag '$Tag' must match Cargo.toml version '$version'" }
     if (-not $Binary) {
         Invoke-Checked cargo @('build', '--release', '--locked', '-p', 'better-sonar')
         $Binary = 'target/release/better-sonar.exe'
@@ -46,7 +48,7 @@ try {
     $setup = Join-Path $output "Better.Sonar_${version}_x64-setup.exe"
     $msi = Join-Path $output "Better.Sonar_${version}_x64_ko-KR.msi"
 
-    Push-Location $PSScriptRoot
+    Push-Location (Join-Path $PSScriptRoot 'windows')
     try {
         Invoke-Checked $nsis @("/DVERSION=$version", "/DOUTPUT=$setup", "/DBINARY=$Binary", "/DICON=$icon", 'installer.nsi')
         $object = Join-Path $output 'installer.wixobj'

@@ -41,7 +41,7 @@ minisign = "0.9"
 winresource = "0.1"
 
 [workspace]
-members = ["packaging/windows/sign"]
+members = ["scripts/windows/sign"]
 resolver = "2"
 
 [workspace.lints.clippy]

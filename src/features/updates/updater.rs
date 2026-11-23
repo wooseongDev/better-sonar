@@ -11,7 +11,7 @@ use crate::windows::InstallerKind;
 
 const FEED: &str = "https://github.com/wooseongDev/better-sonar/releases/latest/download/latest.json";
 const ASSET_PREFIX: &str = "https://github.com/wooseongDev/better-sonar/releases/download/";
-const PUBLIC_KEY: &str = include_str!("../../../packaging/windows/updater.pub");
+const PUBLIC_KEY: &str = include_str!("../../../scripts/windows/updater.pub");
 const MAX_INSTALLER: u64 = 256 * 1024 * 1024;
 
 impl InstallerKind {
