@@ -11,10 +11,11 @@ use tokio::{runtime::Handle, sync::mpsc};
 use tray_icon::{TrayIconEvent, menu::MenuEvent};
 
 use crate::{
-    models::{AppSettings, AppSnapshot},
+    models::{AppSettings, AppSnapshot, ThemePreference},
     settings,
     shortcuts::Hotkeys,
     state::AppRuntime,
+    theme,
     tray::{self, Tray, TrayAction},
     ui::{MainView, ViewModel},
     updates::{Update, Updater},
@@ -36,6 +37,7 @@ pub enum Event {
     Menu(String),
     Sonar(Action),
     Save(AppSettings),
+    SetTheme(ThemePreference),
     Snapshot(Box<AppSnapshot>),
     Notice(String),
     CheckUpdate {
@@ -167,7 +169,13 @@ impl Desktop {
                 };
                 self.notice(message, cx);
             }
-            Event::Snapshot(snapshot) => {
+            Event::SetTheme(preference) => {
+                if let Err(error) = self.set_theme(preference, cx) {
+                    self.notice(format!("테마를 저장하지 못했습니다: {error:#}"), cx);
+                }
+            }
+            Event::Snapshot(mut snapshot) => {
+                snapshot.settings.theme = self.settings.theme;
                 if let Err(error) = self.tray.update(&snapshot) {
                     eprintln!("트레이를 갱신할 수 없습니다: {error:#}");
                 }
@@ -218,6 +226,7 @@ impl Desktop {
         }
         let model = self.model.clone();
         let events = self.events.clone();
+        let preference = self.settings.theme;
         let options = WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
                 None,
@@ -229,6 +238,7 @@ impl Desktop {
         };
         match cx.open_window(options, |window, cx| {
             window.set_window_title(windows::PRODUCT_NAME);
+            theme::apply(preference, window, cx);
             window.on_window_should_close(cx, |window, _| {
                 windows::hide(window);
                 false
@@ -244,7 +254,26 @@ impl Desktop {
         }
     }
 
-    fn save(&mut self, settings: AppSettings) -> Result<Option<String>> {
+    fn set_theme(&mut self, preference: ThemePreference, cx: &mut App) -> Result<()> {
+        if self.settings.theme == preference {
+            return Ok(());
+        }
+        let mut next = self.settings.clone();
+        next.theme = preference;
+        settings::save(&self.settings_path, &next)?;
+        self.settings = next;
+        self.model.update(cx, |model, cx| {
+            model.snapshot.settings.theme = preference;
+            cx.notify();
+        });
+        if let Some(handle) = self.window {
+            let _ = handle.update(cx, |_, window, cx| theme::apply(preference, window, cx));
+        }
+        Ok(())
+    }
+
+    fn save(&mut self, mut settings: AppSettings) -> Result<Option<String>> {
+        settings.theme = self.settings.theme;
         ensure!(
             settings.headset_device_id.is_none() || settings.headset_device_id != settings.speaker_device_id,
             "헤드셋과 스피커는 서로 다른 장치여야 합니다"

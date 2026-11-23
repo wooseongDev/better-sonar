@@ -1,7 +1,7 @@
 use async_channel::Sender;
 use gpui::{AppContext, Context, Entity, SharedString, Subscription, Window, div, prelude::*, px};
 use gpui_component::{
-    ActiveTheme, Disableable, StyledExt,
+    ActiveTheme, Disableable, Icon, IconName, Sizable, StyledExt,
     button::{Button, ButtonVariants},
     checkbox::Checkbox,
     input::{Input, InputState},
@@ -10,7 +10,8 @@ use gpui_component::{
 
 use crate::{
     app::{Action, Event},
-    models::{AppSettings, AppSnapshot, ConnectionStatus},
+    models::{AppSettings, AppSnapshot, ConnectionStatus, ThemePreference},
+    theme,
     updates::Update,
 };
 
@@ -81,6 +82,11 @@ impl MainView {
                 cx.notify();
             }),
             cx.observe(&shortcut, |_, _, cx| cx.notify()),
+            cx.observe_window_appearance(window, |view, window, cx| {
+                if view.model.read(cx).snapshot.settings.theme == ThemePreference::System {
+                    theme::apply(ThemePreference::System, window, cx);
+                }
+            }),
             cx.subscribe(&headset, |view, _, event, cx| {
                 let SelectEvent::Confirm(value) = event;
                 view.draft.headset_device_id = value.clone().flatten();
@@ -157,6 +163,7 @@ impl Render for MainView {
         let snapshot = &model.snapshot;
         let mut draft = self.draft.clone();
         draft.shortcut = self.shortcut.read(cx).value().trim().to_owned();
+        draft.theme = snapshot.settings.theme;
         let changed = draft != snapshot.settings;
         let connected = snapshot.status == ConnectionStatus::Connected;
         let can_toggle =
@@ -177,7 +184,7 @@ impl Render for MainView {
                 .flex_col()
                 .gap_3()
                 .p_4()
-                .rounded_lg()
+                .rounded(px(9.))
                 .border_1()
                 .border_color(theme.border)
                 .bg(theme.group_box)
@@ -188,40 +195,17 @@ impl Render for MainView {
             .as_deref()
             .or(snapshot.stream_device_id.as_deref().filter(|id| !id.is_empty()))
             .unwrap_or("장치 확인 불가");
-
-        let mut devices =
-            panel()
-                .child(title("Personal Mix"))
+        let mut device_actions =
+            div()
+                .flex()
+                .flex_wrap()
+                .gap_2()
                 .child(
-                    div().text_xl().font_semibold().child(
-                        snapshot
-                            .personal_device_name
-                            .clone()
-                            .unwrap_or_else(|| "장치 확인 불가".into()),
-                    ),
-                )
-                .child(hint(snapshot.message.clone().into()))
-                .when(connected, |panel| {
-                    panel.child(hint(format!("Stream Mix 출력: {stream_device}").into()))
-                })
-                .child(
-                    div()
-                        .flex()
-                        .gap_2()
-                        .child(
-                            Button::new("toggle")
-                                .primary()
-                                .label(toggle_label)
-                                .disabled(!can_toggle)
-                                .on_click(cx.listener(|view, _, _, _| {
-                                    let _ = view.events.try_send(Event::Sonar(Action::Toggle));
-                                })),
-                        )
-                        .child(Button::new("refresh").label("Sonar 연결 확인").on_click(cx.listener(
-                            |view, _, _, _| {
-                                let _ = view.events.try_send(Event::Sonar(Action::Refresh));
-                            },
-                        ))),
+                    Button::new("refresh")
+                        .label("Sonar 연결 확인")
+                        .on_click(cx.listener(|view, _, _, _| {
+                            let _ = view.events.try_send(Event::Sonar(Action::Refresh));
+                        })),
                 );
         if connected {
             for (key, label, id) in [
@@ -233,17 +217,106 @@ impl Render for MainView {
                         .devices
                         .iter()
                         .any(|device| device.id == id && device.state == "active");
-                    devices = devices.child(Button::new(key).ghost().label(label).disabled(!available).on_click(
-                        cx.listener(move |view, _, _, _| {
-                            let _ = view.events.try_send(Event::Sonar(Action::Personal(id.clone())));
-                        }),
-                    ));
+                    device_actions =
+                        device_actions.child(Button::new(key).ghost().label(label).disabled(!available).on_click(
+                            cx.listener(move |view, _, _, _| {
+                                let _ = view.events.try_send(Event::Sonar(Action::Personal(id.clone())));
+                            }),
+                        ));
                 }
             }
         }
 
+        let devices = panel()
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .child(title("Personal Mix"))
+                    .when(connected, |row| {
+                        row.child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap_1()
+                                .px_2()
+                                .py_1()
+                                .rounded_full()
+                                .text_xs()
+                                .bg(theme.success)
+                                .text_color(theme.success_foreground)
+                                .child(div().size(px(5.)).rounded_full().bg(theme.success_foreground))
+                                .child("Sonar 연결됨"),
+                        )
+                    }),
+            )
+            .child(
+                div().flex().flex_col().min_w_0().child(hint("현재 출력".into())).child(
+                    div().text_xl().font_semibold().child(
+                        snapshot
+                            .personal_device_name
+                            .clone()
+                            .unwrap_or_else(|| "장치 확인 불가".into()),
+                    ),
+                ),
+            )
+            .when(
+                !connected || snapshot.settings.has_missing_output(&snapshot.devices),
+                |panel| panel.child(hint(snapshot.message.clone().into())),
+            )
+            .child(
+                div()
+                    .relative()
+                    .child(
+                        Button::new("toggle")
+                            .primary()
+                            .w_full()
+                            .h(px(36.))
+                            .justify_start()
+                            .label(toggle_label)
+                            .disabled(!can_toggle)
+                            .on_click(cx.listener(|view, _, _, _| {
+                                let _ = view.events.try_send(Event::Sonar(Action::Toggle));
+                            })),
+                    )
+                    .child(
+                        div()
+                            .absolute()
+                            .right_4()
+                            .top_0()
+                            .bottom_0()
+                            .flex()
+                            .items_center()
+                            .child(
+                                Icon::new(IconName::ArrowRight)
+                                    .with_size(px(16.))
+                                    .text_color(if can_toggle {
+                                        theme.primary_foreground
+                                    } else {
+                                        theme.muted_foreground
+                                    }),
+                            ),
+                    ),
+            )
+            .when(connected, |panel| {
+                panel.child(
+                    div()
+                        .flex()
+                        .justify_between()
+                        .gap_2()
+                        .border_t_1()
+                        .border_color(theme.border)
+                        .pt_2()
+                        .text_sm()
+                        .child(hint("Stream Mix 출력".into()))
+                        .child(stream_device.to_owned()),
+                )
+            })
+            .child(device_actions);
+
         let settings = panel()
-            .child(title("전환할 두 장치 선택"))
+            .child(title("장치 전환 설정"))
             .child(
                 div()
                     .flex()
@@ -263,8 +336,15 @@ impl Render for MainView {
                             .child(Select::new(&self.speaker)),
                     ),
             )
-            .child(hint("글로벌 단축키".into()))
-            .child(Input::new(&self.shortcut))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .gap_3()
+                    .child(hint("글로벌 단축키".into()))
+                    .child(div().w(px(208.)).child(Input::new(&self.shortcut))),
+            )
             .child(
                 Checkbox::new("autostart")
                     .label("Windows 시작 시 자동 실행")
@@ -292,6 +372,24 @@ impl Render for MainView {
                         let _ = view.events.try_send(Event::Save(draft.clone()));
                     })),
             );
+
+        let appearance = panel().child(title("테마")).child(
+            div().flex().flex_wrap().gap_2().children(
+                [
+                    ("theme-system", "시스템 설정 따르기", ThemePreference::System),
+                    ("theme-light", "라이트", ThemePreference::Light),
+                    ("theme-dark", "다크", ThemePreference::Dark),
+                ]
+                .map(|(id, label, preference)| {
+                    Button::new(id)
+                        .when(snapshot.settings.theme == preference, |button| button.primary())
+                        .label(label)
+                        .on_click(cx.listener(move |view, _, _, _| {
+                            let _ = view.events.try_send(Event::SetTheme(preference));
+                        }))
+                }),
+            ),
+        );
 
         let mut updates = panel()
             .child(title("업데이트"))
@@ -344,9 +442,9 @@ impl Render for MainView {
                     .flex_col()
                     .gap_4()
                     .p_5()
-                    .child(div().text_2xl().font_semibold().child("Better Sonar"))
                     .child(devices)
                     .child(settings)
+                    .child(appearance)
                     .child(updates)
                     .children(
                         model

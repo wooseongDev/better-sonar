@@ -21,6 +21,15 @@ pub struct AudioDevice {
     pub channels: u32,
 }
 
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ThemePreference {
+    #[default]
+    System,
+    Light,
+    Dark,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct AppSettings {
@@ -30,10 +39,25 @@ pub struct AppSettings {
     pub autostart: bool,
     #[serde(default = "default_media_keys_enabled")]
     pub media_keys_enabled: bool,
+    #[serde(default)]
+    pub theme: ThemePreference,
 }
 
 const fn default_media_keys_enabled() -> bool {
     true
+}
+
+impl AppSettings {
+    pub fn has_missing_output(&self, devices: &[AudioDevice]) -> bool {
+        [&self.headset_device_id, &self.speaker_device_id]
+            .into_iter()
+            .flatten()
+            .any(|id| {
+                !devices
+                    .iter()
+                    .any(|device| &device.id == id && device.state == "active")
+            })
+    }
 }
 
 impl Default for AppSettings {
@@ -44,6 +68,7 @@ impl Default for AppSettings {
             shortcut: "Ctrl+Alt+F9".into(),
             autostart: false,
             media_keys_enabled: true,
+            theme: ThemePreference::System,
         }
     }
 }
@@ -97,7 +122,7 @@ pub fn unix_millis() -> u64 {
 mod tests {
     use serde_json::json;
 
-    use super::{AppSettings, ConnectionStatus};
+    use super::{AppSettings, ConnectionStatus, ThemePreference};
 
     #[test]
     fn frontend_contract_uses_expected_json_field_and_status_names() {
@@ -107,6 +132,7 @@ mod tests {
             shortcut: "Ctrl+Alt+F9".into(),
             autostart: false,
             media_keys_enabled: true,
+            theme: ThemePreference::Light,
         };
 
         assert_eq!(
@@ -116,7 +142,8 @@ mod tests {
                 "speakerDeviceId": "speaker",
                 "shortcut": "Ctrl+Alt+F9",
                 "autostart": false,
-                "mediaKeysEnabled": true
+                "mediaKeysEnabled": true,
+                "theme": "light"
             })
         );
         assert_eq!(

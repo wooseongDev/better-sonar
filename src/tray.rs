@@ -169,25 +169,44 @@ fn create_menu(signature: &MenuSignature) -> Result<Menu> {
 pub struct Tray {
     icon: TrayIcon,
     signature: MenuSignature,
+    light_taskbar: bool,
+}
+
+fn tray_icon(light_taskbar: bool) -> Result<Icon> {
+    let png = if light_taskbar {
+        include_bytes!("../assets/tray-light.png").as_slice()
+    } else {
+        include_bytes!("../assets/tray-dark.png").as_slice()
+    };
+    let rgba = image::load_from_memory(png)?.into_rgba8();
+    let (width, height) = rgba.dimensions();
+    Ok(Icon::from_rgba(rgba.into_raw(), width, height)?)
 }
 
 impl Tray {
     pub fn new() -> Result<Self> {
         let signature = MenuSignature::from_snapshot(None);
-        let icon = image::load_from_memory(include_bytes!("../assets/icon.png"))?
-            .resize(32, 32, image::imageops::FilterType::Lanczos3)
-            .into_rgba8();
-        let (width, height) = icon.dimensions();
+        let light_taskbar = crate::windows::taskbar_uses_light_theme();
         let icon = TrayIconBuilder::new()
             .with_tooltip("Better Sonar")
-            .with_icon(Icon::from_rgba(icon.into_raw(), width, height)?)
+            .with_icon(tray_icon(light_taskbar)?)
             .with_menu(Box::new(create_menu(&signature)?))
             .with_menu_on_left_click(false)
             .build()?;
-        Ok(Self { icon, signature })
+        Ok(Self {
+            icon,
+            signature,
+            light_taskbar,
+        })
     }
 
     pub fn update(&mut self, snapshot: &AppSnapshot) -> Result<()> {
+        let light_taskbar = crate::windows::taskbar_uses_light_theme();
+        if self.light_taskbar != light_taskbar {
+            self.icon.set_icon(Some(tray_icon(light_taskbar)?))?;
+            self.light_taskbar = light_taskbar;
+        }
+
         let signature = MenuSignature::from_snapshot(Some(snapshot));
         if self.signature != signature {
             self.icon.set_menu(Some(Box::new(create_menu(&signature)?)));
