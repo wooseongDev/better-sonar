@@ -169,42 +169,66 @@ fn create_menu(signature: &MenuSignature) -> Result<Menu> {
 pub struct Tray {
     icon: TrayIcon,
     signature: MenuSignature,
-    light_taskbar: bool,
+    appearance: IconAppearance,
 }
 
-fn tray_icon(light_taskbar: bool) -> Result<Icon> {
-    let png = if light_taskbar {
-        include_bytes!("../../assets/tray-light.png").as_slice()
-    } else {
-        include_bytes!("../../assets/tray-dark.png").as_slice()
-    };
-    let rgba = image::load_from_memory(png)?.into_rgba8();
-    let (width, height) = rgba.dimensions();
-    Ok(Icon::from_rgba(rgba.into_raw(), width, height)?)
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct IconAppearance {
+    light_taskbar: bool,
+    using_speaker: bool,
+}
+
+impl IconAppearance {
+    fn new(light_taskbar: bool, snapshot: Option<&AppSnapshot>) -> Self {
+        let using_speaker = snapshot.is_some_and(|snapshot| {
+            snapshot.status == ConnectionStatus::Connected
+                && snapshot.settings.speaker_device_id.is_some()
+                && snapshot.personal_device_id == snapshot.settings.speaker_device_id
+        });
+        Self {
+            light_taskbar,
+            using_speaker,
+        }
+    }
+
+    fn png(self) -> &'static [u8] {
+        match (self.using_speaker, self.light_taskbar) {
+            (false, true) => include_bytes!("../../assets/tray-light.png"),
+            (false, false) => include_bytes!("../../assets/tray-dark.png"),
+            (true, true) => include_bytes!("../../assets/tray-speaker-light.png"),
+            (true, false) => include_bytes!("../../assets/tray-speaker-dark.png"),
+        }
+    }
+
+    fn icon(self) -> Result<Icon> {
+        let rgba = image::load_from_memory(self.png())?.into_rgba8();
+        let (width, height) = rgba.dimensions();
+        Ok(Icon::from_rgba(rgba.into_raw(), width, height)?)
+    }
 }
 
 impl Tray {
     pub fn new() -> Result<Self> {
         let signature = MenuSignature::from_snapshot(None);
-        let light_taskbar = crate::windows::taskbar_uses_light_theme();
+        let appearance = IconAppearance::new(crate::windows::taskbar_uses_light_theme(), None);
         let icon = TrayIconBuilder::new()
             .with_tooltip("Better Sonar")
-            .with_icon(tray_icon(light_taskbar)?)
+            .with_icon(appearance.icon()?)
             .with_menu(Box::new(create_menu(&signature)?))
             .with_menu_on_left_click(false)
             .build()?;
         Ok(Self {
             icon,
             signature,
-            light_taskbar,
+            appearance,
         })
     }
 
     pub fn update(&mut self, snapshot: &AppSnapshot) -> Result<()> {
-        let light_taskbar = crate::windows::taskbar_uses_light_theme();
-        if self.light_taskbar != light_taskbar {
-            self.icon.set_icon(Some(tray_icon(light_taskbar)?))?;
-            self.light_taskbar = light_taskbar;
+        let appearance = IconAppearance::new(crate::windows::taskbar_uses_light_theme(), Some(snapshot));
+        if self.appearance != appearance {
+            self.icon.set_icon(Some(appearance.icon()?))?;
+            self.appearance = appearance;
         }
 
         let signature = MenuSignature::from_snapshot(Some(snapshot));
@@ -221,7 +245,7 @@ impl Tray {
 mod tests {
     use crate::features::settings::AppSettings;
 
-    use super::{AppSnapshot, AudioDevice, ConnectionStatus, MenuSignature};
+    use super::{AppSnapshot, AudioDevice, ConnectionStatus, IconAppearance, MenuSignature};
 
     fn snapshot() -> AppSnapshot {
         AppSnapshot {
@@ -248,6 +272,45 @@ mod tests {
             mic_device_name: Some("Microphone".into()),
             settings: AppSettings::default(),
             last_updated_at: 1,
+        }
+    }
+
+    #[test]
+    fn only_the_connected_personal_speaker_uses_the_bare_ghost() {
+        for (light_taskbar, original, speaker) in [
+            (
+                true,
+                include_bytes!("../../assets/tray-light.png").as_slice(),
+                include_bytes!("../../assets/tray-speaker-light.png").as_slice(),
+            ),
+            (
+                false,
+                include_bytes!("../../assets/tray-dark.png").as_slice(),
+                include_bytes!("../../assets/tray-speaker-dark.png").as_slice(),
+            ),
+        ] {
+            let mut snapshot = snapshot();
+            let png = |snapshot: &AppSnapshot| IconAppearance::new(light_taskbar, Some(snapshot)).png();
+
+            assert_ne!(speaker, original);
+            assert_eq!(IconAppearance::new(light_taskbar, None).png(), original);
+            assert_eq!(png(&snapshot), original);
+
+            snapshot.settings.speaker_device_id = Some("speaker".into());
+            snapshot.settings.headset_device_id = Some("headset".into());
+            assert_eq!(png(&snapshot), speaker);
+
+            snapshot.status = ConnectionStatus::GgNotRunning;
+            assert_eq!(png(&snapshot), original);
+
+            snapshot.status = ConnectionStatus::Connected;
+            for id in [Some("headset"), Some("other"), None] {
+                snapshot.personal_device_id = id.map(str::to_owned);
+                assert_eq!(png(&snapshot), original);
+            }
+
+            snapshot.settings.speaker_device_id = None;
+            assert_eq!(png(&snapshot), original);
         }
     }
 
